@@ -29,7 +29,48 @@ namespace BlobSync
 {
     class AzureOps : ICloudOps
     {
-        void UploadBlob(Blob blob, string containerName)
+        
+        // updates blob if possible.
+        // if blob doesn't already exist OR does not have a signature file 
+        // then we just upload as usual.
+        public void UpdateRemoteBlobFromLocalFile(string container, string blobName, string localFilePath)
+        {
+            // 1) Does remote blob exist?
+            if (AzureHelper.DoesBlobExist(container, blobName))
+            {
+                
+            }
+            else
+            {
+                UploadFile(localFilePath, container );
+
+            }
+            // 2) if so, download existing signature for blob.
+
+            // 3) If signature does NOT exist, just upload as normal. No tricky stuff to do here.
+
+            // 4) If blob exists and have signature, then let the magic begin.
+
+        }
+
+        public Blob UpdateLocalFileFromRemoteBlob(string container, string blobName, string localFilePath)
+        {
+            Blob newLocalBlob = null;
+
+            return newLocalBlob;
+        }
+
+        public CompleteSignature DownloadSignatureForBlob(Blob blob)
+        {
+            throw new NotImplementedException();
+        }
+
+        public void UploadSignatureForBlob(CompleteSignature sig)
+        {
+            throw new NotImplementedException();
+        }
+
+        public void UploadFile(string localFilePath, string containerName)
         {
             Stream stream = null;
 
@@ -37,23 +78,15 @@ namespace BlobSync
             {
                 var client = AzureHelper.GetCloudBlobClient();
 
-                var blobName = blob.Name;
+                var blobName = AzureHelper.GetBlobNameFromFilePath(localFilePath);
 
                 var container = client.GetContainerReference(containerName);
                 container.CreateIfNotExists();
 
-                // get stream to data.
-                if (blob.BlobSavedToFile)
-                {
-                    stream = new FileStream(blob.FilePath, FileMode.Open);
-                }
-                else
-                {
-                    stream = new MemoryStream(blob.Data);
-                }
-
+                stream = new FileStream(localFilePath, FileMode.Open);
+                
                 // assuming block blobs for now.
-                WriteBlockBlob(stream, blob, container);
+                WriteBlockBlob(stream, blobName, container);
                 
 
             }
@@ -77,9 +110,9 @@ namespace BlobSync
 
 
         // can make this concurrent... soonish. :)
-        private void WriteBlockBlob(Stream stream, Blob blob, CloudBlobContainer container, int parallelFactor = 1, int chunkSizeInMB = 2)
+        private void WriteBlockBlob(Stream stream, string blobName, CloudBlobContainer container, int parallelFactor = 1, int chunkSizeInMB = 2)
         {
-            var blobRef = container.GetBlockBlobReference(blob.Name);
+            var blobRef = container.GetBlockBlobReference(blobName);
             blobRef.DeleteIfExists();
 
             // use "parallel" option even if parallelfactor == 1.
@@ -155,7 +188,7 @@ namespace BlobSync
             blob.PutBlockList(blockIdList);
         }
 
-        Blob DownloadBlob(string containerName, string blobName)
+        public Blob DownloadBlob(string containerName, string blobName)
         {
             Blob blob = null;
             var client = AzureHelper.GetCloudBlobClient();

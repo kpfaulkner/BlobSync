@@ -31,12 +31,12 @@ namespace BlobSync
         CompleteSignature DownloadSignatureForBlob(Blob blob);
         void UploadSignatureForBlob(CompleteSignature sig);
 
-        void UploadBlob(Blob blob, string container);
+        void UploadFile(string localFilePath, string container);
 
         Blob DownloadBlob(string container, string blobName);
 
-        void UploadPartialBlob(Blob blob, string container, SignatureSearchResult sigResult);
+        void UpdateRemoteBlobFromLocalFile(string container, string blobName, string localFilePath);
+        Blob UpdateLocalFileFromRemoteBlob(string container, string blobName, string localFilePath);
 
-        Blob DownloadPartialBlob(Blob localBlob, string container, string blobName, SignatureSearchResult sigResult);
     }
 }

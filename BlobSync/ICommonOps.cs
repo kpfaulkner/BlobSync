@@ -26,9 +26,11 @@ namespace BlobSync
 {
     interface ICommonOps
     {
-         CompleteSignature CreateSignatureForBlob(Blob blob);
+         CompleteSignature CreateSignatureForLocalFile(string localFilePath);
 
-        SignatureSearchResult SearchBlobForSignatures(Blob blob);
+        SignatureSearchResult SearchBlobForSignatures(Blob blob, CompleteSignature sig);
+
+        SignatureSearchResult SearchLocalFileForSignatures(string localFilePath, CompleteSignature sig);
 
     }
 }

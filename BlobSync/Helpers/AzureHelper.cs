@@ -39,32 +39,31 @@ namespace BlobSync.Helpers
             BlobClient = null;
         }
 
-        private static bool IsDevUrl(string url)
+        private static bool IsDevUrl()
         {
             return ConfigHelper.IsDev == "1";
         }
 
-        // blobUrl can contain multiple levels of / due to virtual directories 
-        // may be referenced.
-        public static string GetContainerFromUrl(string blobUrl, bool assumeNoBlob = false)
+        public static bool DoesBlobExist(string container, string blobName)
         {
-            var url = new Uri(blobUrl);
-            string container = "";  // there may be no container.
-
-            if (IsDevUrl(blobUrl))
+            var exists = false;
+            try
             {
-                container = url.Segments[2];
+                var client = GetCloudBlobClient();
+
+                var url = GenerateUrl(container, blobName);
+
+                var blob = client.GetBlobReferenceFromServer(new Uri(url));
+
+                if (blob != null)
+                    exists = true;
             }
-            else
+            catch (Exception)
             {
-                if (url.Segments.Length > 1)
-                {
-                    container = url.Segments[1];
-                }
+                
             }
 
-            container = container.TrimEnd('/');
-            return container;
+            return exists;
         }
 
         public static CloudBlobClient GetCloudBlobClient()
@@ -119,6 +118,11 @@ namespace BlobSync.Helpers
             var url = "https://" + ConfigHelper.AzureAccountName + "." + AzureBaseUrl + "/" + containerName + "/" + blobName;
 
             return url;
+        }
+
+        internal static string GetBlobNameFromFilePath(string localFilePath)
+        {
+            throw new NotImplementedException();
         }
     }
 }
