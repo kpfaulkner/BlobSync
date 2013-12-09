@@ -64,6 +64,7 @@
   <ItemGroup>
     <Compile Include="AzureOps.cs" />
     <Compile Include="BlobSync.cs" />
+    <Compile Include="CommonOps.cs" />
     <Compile Include="Datatypes\Blob.cs" />
     <Compile Include="Datatypes\Signature.cs" />
     <Compile Include="Datatypes\SignatureSearchResult.cs" />

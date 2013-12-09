@@ -122,7 +122,34 @@ namespace BlobSync.Helpers
 
         internal static string GetBlobNameFromFilePath(string localFilePath)
         {
-            throw new NotImplementedException();
+            var url = new Uri(localFilePath);
+            var blobName = url.Segments[url.Segments.Length - 1];
+            return blobName;
+        }
+
+        internal static bool DoesBlobSignatureExist(string container, string blobName)
+        {
+            var exists = false;
+            try
+            {
+                var client = GetCloudBlobClient();
+
+                var url = GenerateUrl(container, blobName);
+
+                // sig file will be same of blob name except with extension ".sig"
+                url += ".sig";
+
+                var blob = client.GetBlobReferenceFromServer(new Uri(url));
+
+                if (blob != null)
+                    exists = true;
+            }
+            catch (Exception)
+            {
+
+            }
+
+            return exists;
         }
     }
 }

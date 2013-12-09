@@ -36,20 +36,38 @@ namespace BlobSync
         public void UpdateRemoteBlobFromLocalFile(string container, string blobName, string localFilePath)
         {
             // 1) Does remote blob exist?
-            if (AzureHelper.DoesBlobExist(container, blobName))
+            // 2) if so, download existing signature for blob.
+            if (AzureHelper.DoesBlobExist(container, blobName) && AzureHelper.DoesBlobSignatureExist(container, blobName))
             {
-                
+                // 3) If blob exists and have signature, then let the magic begin.
+                // 3.1) Download existing blob signature from Azure.
+                // 3.2) Search through local file for matches in existing blob signature.
+                // 3.3) Upload differences to Azure
+                // 3.4) Upload new signature.s
+
+                var blobSig = DownloadSignatureForBlob(container, blobName);
+                var searchResults = CommonOps.SearchLocalFileForSignatures(localFilePath, blobSig);
+                UploadDelta(localFilePath, searchResults, container, blobName);
+                var sig = CommonOps.CreateSignatureForLocalFile(localFilePath);
+                UploadSignatureForBlob(sig);
+
             }
             else
             {
+                // 4) If blob or signature does NOT exist, just upload as normal. No tricky stuff to do here.
+                // 4.1) Generate signature and upload it.
                 UploadFile(localFilePath, container );
+                var sig = CommonOps.CreateSignatureForLocalFile(localFilePath);
+                UploadSignatureForBlob(sig);
 
             }
-            // 2) if so, download existing signature for blob.
+        }
 
-            // 3) If signature does NOT exist, just upload as normal. No tricky stuff to do here.
-
-            // 4) If blob exists and have signature, then let the magic begin.
+        // Uploads differences between existing blob and updated local file.
+        // Have local file to reference, the search results (indicating which parts need to be uploaded)
+        // container and blob name.
+        private void UploadDelta(string localFilePath, SignatureSearchResult searchResults, string container, string blobName)
+        {
 
         }
 
@@ -60,7 +78,7 @@ namespace BlobSync
             return newLocalBlob;
         }
 
-        public CompleteSignature DownloadSignatureForBlob(Blob blob)
+        public CompleteSignature DownloadSignatureForBlob(string container, string blobName)
         {
             throw new NotImplementedException();
         }
