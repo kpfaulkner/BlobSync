@@ -15,6 +15,7 @@ local.properties
 .classpath
 .settings/
 .loadpath
+*.nupkg
 
 # External tool builders
 .externalToolBuilders/
@@ -40,6 +41,8 @@ local.properties
 *.suo
 *.user
 *.sln.docstates
+App.config
+APIKeys.cs
 
 # Build results
 
@@ -130,7 +133,7 @@ publish/
 
 # NuGet Packages Directory
 ## TODO: If you have NuGet Package Restore enabled, uncomment the next line
-#packages/
+packages/
 
 # Windows Azure Build Output
 csx
