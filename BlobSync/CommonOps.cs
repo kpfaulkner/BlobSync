@@ -41,6 +41,9 @@ namespace BlobSync
             var windowSize = ConfigHelper.SignatureSize;
             var windowBuffer = new byte[windowSize];
 
+            // signatures we can reuse.
+            var signaturesToReuse = new List<BlockSignature>();
+
             // get sizes of signatures (block sizes) from existing sig.
             // then loop through all sizes looking for matches in local file.
             var signatureSizes = sig.Signatures.Keys.ToList();
@@ -59,7 +62,7 @@ namespace BlobSync
                     foreach (var sigSize in signatureSizes)
                     {
                         var sigs = sig.Signatures[sigSize];
-                        SearchLocalFileForSignaturesBasedOnSize(sigs, accessor, remainingByteList, sigSize, fileLength);
+                        SearchLocalFileForSignaturesBasedOnSize(sigs, accessor, remainingByteList, sigSize, fileLength, signaturesToReuse);
                     }
 
                     var bytesRead = accessor.ReadArray(offset, windowBuffer, 0, windowSize);
@@ -79,7 +82,7 @@ namespace BlobSync
             return result;
         }
 
-        private static void SearchLocalFileForSignaturesBasedOnSize(CompleteSignature sig, MemoryMappedViewAccessor accessor, List<RemainingBytes> remainingByteList, int sigSize, long fileSize, List<BlockSignature> signaturesToReuse )
+        private static List<RemainingBytes> SearchLocalFileForSignaturesBasedOnSize(CompleteSignature sig, MemoryMappedViewAccessor accessor, List<RemainingBytes> remainingByteList, int sigSize, long fileSize, List<BlockSignature> signaturesToReuse)
         {
             var windowSize = sigSize;
             var newRemainingBytes = new List<RemainingBytes>();
@@ -95,24 +98,34 @@ namespace BlobSync
                     var byteRangeSize = byteRange.EndOffset - byteRange.BeginOffset + 1;
                     // search this byterange for all possible keys.
                     offset = byteRange.BeginOffset;
-                    var bytesRead = accessor.ReadArray(offset, buffer, 0, windowSize);
-                    
-                    // should really do a bytesRead == windowSize check sometime.
-                    
-                    // get initial sig.
-                    var currentSig = CreateRollingSignature(buffer);
-                    var generateFreshSig = false;
+                    var generateFreshSig = true;
+                    var bytesRead = 0L;
+                    RollingSignature? currentSig = null;
 
                     do
                     {
-                        if (sigDict.ContainsKey(currentSig))
+                        if (generateFreshSig)
+                        {
+                            bytesRead = accessor.ReadArray(offset, buffer, 0, windowSize);
+                            currentSig = CreateRollingSignature(buffer);
+
+                        }
+                        else
+                        {
+                            // roll existing sig.
+                            var previousByte = accessor.ReadByte(offset - 1);
+                            var nextByte = accessor.ReadByte(offset + windowSize - 1);  // Need bounds checking?
+                            currentSig = RollSignature(windowSize, previousByte, nextByte, currentSig.Value);
+                        }
+
+                        if (sigDict.ContainsKey(currentSig.Value))
                         {
                             // populate buffer.
                             bytesRead = accessor.ReadArray(offset, buffer, 0, windowSize);
 
                             // check md5 sig.
                             var md5Sig = CreateMD5Signature(buffer);
-                            var sigsForCurrentRollingSig = sigDict[currentSig];
+                            var sigsForCurrentRollingSig = sigDict[currentSig.Value];
 
                             // have a matching md5? If so, we have a match.
                             var matchingSigs =
@@ -123,38 +136,36 @@ namespace BlobSync
                             if (matchingSigs.Any())
                             {
                                 var matchingSig = matchingSigs[0];
+
+                                // when storing which existing sig to use, make sure we know the offset in the NEW file it should appear.
+                                matchingSig.Offset = offset;
                                 signaturesToReuse.Add(matchingSig);
                                 offset += windowSize;
                                 generateFreshSig = true;
                             }
-
+                            else
+                            {
+                                offset++;
+                                generateFreshSig = false;
+                            }
                         }
                         else
                         {
                             // no match. Just increment offset and generate rolling sig.
                             offset++;
                             generateFreshSig = false;
-           
                         }
-
-                        if (generateFreshSig)
-                        {
-                            bytesRead = accessor.ReadArray(offset, buffer, 0, windowSize);
-
-                            // get initial sig.
-                            currentSig = CreateRollingSignature(buffer);
-                            
-                        }
-                        else
-                        {
-                            // roll existing sig.
-                            var previousByte = accessor.ReadByte(offset - 1);
-                            var nextByte = accessor.ReadByte(offset + windowSize);  // fixme.....
-                        }
-
                     } while (offset + windowSize < byteRangeSize);
 
-
+                    // add remaining bytes to newRemainingBytes list
+                    if (offset < byteRange.EndOffset)
+                    {
+                        newRemainingBytes.Add(new RemainingBytes()
+                        {
+                            BeginOffset = offset,
+                            EndOffset = byteRange.EndOffset
+                        });
+                    }
                 }
                 else
                 {
@@ -162,7 +173,7 @@ namespace BlobSync
                 }
             }
 
-
+            return newRemainingBytes;
         }
 
         // generates a dictionary with rolling sig as the key
