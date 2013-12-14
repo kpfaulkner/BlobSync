@@ -73,10 +73,11 @@
     <Compile Include="Helpers\ConfigHelper.cs" />
     <Compile Include="IBlobSync.cs" />
     <Compile Include="ICloudOps.cs" />
-    <Compile Include="ICommonOps.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
   </ItemGroup>
   <ItemGroup>
+    <None Include="App.config" />
+    <None Include="Dummy_App.config" />
     <None Include="packages.config" />
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />

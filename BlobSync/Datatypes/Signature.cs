@@ -52,6 +52,25 @@ namespace BlobSync.Datatypes
         public BlockSignature[] SignatureList { get; set; }
     }
 
+    [Serializable]
+    public struct SizeBasedCompleteSignature
+    {
+        // key is size of the rolling sig used to generate the signature.
+        // this way can perform multiple comparisons based on size.
+        public Dictionary<int, CompleteSignature> Signatures { get; set; }
+    }
 
+    internal class RemainingBytes
+    {
+        /// <summary>
+        /// Start offset. Inclusive.
+        /// </summary>
+        public long BeginOffset { get; set; }
+
+        /// <summary>
+        /// End offset. Inclusive.
+        /// </summary>
+        public long EndOffset { get; set; }
+    }
 
 }

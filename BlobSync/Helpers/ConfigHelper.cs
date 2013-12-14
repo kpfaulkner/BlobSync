@@ -34,6 +34,8 @@ namespace BlobSync.Helpers
         public static string AzureAccountKey { get; set; }
         public static string AzureAccountName { get; set; }
 
+        public static int SignatureSize { get; set; }
+    
         public static string IsDev { get; set; }
 
         // retry attempt details
@@ -88,6 +90,7 @@ namespace BlobSync.Helpers
         {
             AzureAccountKey = GetConfigValue<string>("AzureAccountKey", "");
             AzureAccountName = GetConfigValue<string>("AzureAccountNames", "");
+            SignatureSize = GetConfigValue<int>("SignatureSize", 4210688);
             IsDev = GetConfigValue<string>("IsDev", "");
            
             // retry policies.
@@ -114,6 +117,7 @@ namespace BlobSync.Helpers
             Configuration config = ConfigurationManager.OpenExeConfiguration(ConfigurationUserLevel.None);
             SetConfigValue(config, "AzureAccountKey",AzureAccountKey);
             SetConfigValue(config, "AzureAccountName", AzureAccountName);
+            SetConfigValue(config, "SignatureSize", SignatureSize.ToString());
             SetConfigValue(config, "IsDev", IsDev);
           
             SetConfigValue(config, "RetryAttemptDelayInSeconds",RetryAttemptDelayInSeconds.ToString());

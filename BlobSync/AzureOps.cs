@@ -78,12 +78,12 @@ namespace BlobSync
             return newLocalBlob;
         }
 
-        public CompleteSignature DownloadSignatureForBlob(string container, string blobName)
+        public SizeBasedCompleteSignature DownloadSignatureForBlob(string container, string blobName)
         {
             throw new NotImplementedException();
         }
 
-        public void UploadSignatureForBlob(CompleteSignature sig)
+        public void UploadSignatureForBlob(SizeBasedCompleteSignature sig)
         {
             throw new NotImplementedException();
         }
