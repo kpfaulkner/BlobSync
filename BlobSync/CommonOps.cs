@@ -1,4 +1,21 @@
-﻿using System;
+﻿//-----------------------------------------------------------------------
+// <copyright >
+//    Copyright 2013 Ken Faulkner
+//
+//    Licensed under the Apache License, Version 2.0 (the "License");
+//    you may not use this file except in compliance with the License.
+//    You may obtain a copy of the License at
+//      http://www.apache.org/licenses/LICENSE-2.0
+//
+//    Unless required by applicable law or agreed to in writing, software
+//    distributed under the License is distributed on an "AS IS" BASIS,
+//    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+//    See the License for the specific language governing permissions and
+//    limitations under the License.
+// </copyright>
+//-----------------------------------------------------------------------
+
+using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
@@ -12,7 +29,7 @@ using System.Security.Cryptography;
 
 namespace BlobSync
 {
-    class CommonOps
+    public class CommonOps
     {
         static MD5 md5Hash;
 
@@ -25,7 +42,44 @@ namespace BlobSync
         {
             var sig = new SizeBasedCompleteSignature();
 
-            return sig;
+            var buffer = new byte[ConfigHelper.SignatureSize];
+            var sigDict = new Dictionary<int, List<BlockSignature>>();
+
+            using (var fs = new FileStream(localFilePath, FileMode.Open))
+            {
+                var offset = 0;
+                uint idCount = 0;
+                int bytesRead = 0;
+
+                while ((bytesRead = fs.Read(buffer, 0, ConfigHelper.SignatureSize)) > 0)
+                {
+                    var blockSig = GenerateBlockSig(buffer, offset, (uint)bytesRead, idCount);
+                    List<BlockSignature> sigList;
+                    if (!sigDict.TryGetValue(bytesRead, out sigList))
+                    {
+                        sigList = new List<BlockSignature>();
+                        sigDict[bytesRead] = sigList;
+                    }
+
+                    sigList.Add(blockSig);
+
+                    offset += bytesRead;
+                    idCount++;
+                }
+
+            }
+
+            var sizedBaseSignature = new SizeBasedCompleteSignature();
+            sizedBaseSignature.Signatures = new Dictionary<int, CompleteSignature>();
+
+            foreach (var key in sigDict.Keys)
+            {
+                var compSig = new CompleteSignature() {SignatureList = sigDict[key].ToArray()};
+                sizedBaseSignature.Signatures[key] = compSig;
+
+            }
+
+            return sizedBaseSignature;
         }
 
         public static SignatureSearchResult SearchLocalFileForSignatures(string localFilePath, SizeBasedCompleteSignature sig)
@@ -62,20 +116,9 @@ namespace BlobSync
                     foreach (var sigSize in signatureSizes)
                     {
                         var sigs = sig.Signatures[sigSize];
-                        SearchLocalFileForSignaturesBasedOnSize(sigs, accessor, remainingByteList, sigSize, fileLength, signaturesToReuse);
+                        var newRemainingByteList = SearchLocalFileForSignaturesBasedOnSize(sigs, accessor, remainingByteList, sigSize, fileLength, signaturesToReuse);
+                        remainingByteList = newRemainingByteList;
                     }
-
-                    var bytesRead = accessor.ReadArray(offset, windowBuffer, 0, windowSize);
-                    if (bytesRead != windowSize)
-                    {
-                        windowSize = bytesRead;
-                    }
-
-                    while (offset + windowSize < fileLength)
-                    {
-                        
-                    }
-
                 }
             }
 
@@ -120,7 +163,7 @@ namespace BlobSync
 
                         if (sigDict.ContainsKey(currentSig.Value))
                         {
-                            // populate buffer.
+                            // populate buffer. Potential waste of IO here.
                             bytesRead = accessor.ReadArray(offset, buffer, 0, windowSize);
 
                             // check md5 sig.
@@ -222,7 +265,7 @@ namespace BlobSync
         }
 
 
-        internal static BlockSignature GenerateBlockSig(byte[] buffer, long offset, uint id)
+        internal static BlockSignature GenerateBlockSig(byte[] buffer, long offset, uint blockSize, uint id)
         {
             var sig = new BlockSignature();
 
@@ -232,7 +275,7 @@ namespace BlobSync
             sig.MD5Signature = md5Sig;
             sig.Offset = offset;
             sig.BlockNumber = id;
-            sig.Size = (uint)buffer.Length;
+            sig.Size = blockSize;
 
             return sig;
         }

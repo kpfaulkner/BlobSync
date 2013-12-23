@@ -71,6 +71,7 @@
     <Compile Include="Helpers\AzureHelper.cs" />
     <Compile Include="Helpers\CommonHelper.cs" />
     <Compile Include="Helpers\ConfigHelper.cs" />
+    <Compile Include="Helpers\SerializationHelper.cs" />
     <Compile Include="IBlobSync.cs" />
     <Compile Include="ICloudOps.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />

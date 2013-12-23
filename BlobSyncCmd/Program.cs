@@ -14,16 +14,32 @@
 //    limitations under the License.
 // </copyright>
 //-----------------------------------------------------------------------
-
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
+using BlobSync;
+using BlobSync.Helpers;
 
-namespace BlobSync.Datatypes
+namespace BlobSyncCmd
 {
-    public class SignatureSearchResult
+    class Program
     {
+        static void Main(string[] args)
+        {
+            var fileName = args[0];
+            var sigFile = fileName + ".sig";
+
+            var sig = CommonOps.CreateSignatureForLocalFile(fileName);
+
+
+            using (var f = new FileStream(sigFile, FileMode.Create))
+            {
+                SerializationHelper.WriteBinarySizedBasedSignature(sig, f);    
+            }
+
+        }
     }
 }

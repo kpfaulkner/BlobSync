@@ -5,6 +5,8 @@ VisualStudioVersion = 12.0.21005.1
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "BlobSync", "BlobSync\BlobSync.csproj", "{F67AB9C9-CD34-4153-B19C-B1803820FD1D}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "BlobSyncCmd", "BlobSyncCmd\BlobSyncCmd.csproj", "{9D3567D4-A156-480E-A8A0-7D406BD69BE4}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -15,6 +17,10 @@ Global
 		{F67AB9C9-CD34-4153-B19C-B1803820FD1D}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{F67AB9C9-CD34-4153-B19C-B1803820FD1D}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{F67AB9C9-CD34-4153-B19C-B1803820FD1D}.Release|Any CPU.Build.0 = Release|Any CPU
+		{9D3567D4-A156-480E-A8A0-7D406BD69BE4}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{9D3567D4-A156-480E-A8A0-7D406BD69BE4}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{9D3567D4-A156-480E-A8A0-7D406BD69BE4}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{9D3567D4-A156-480E-A8A0-7D406BD69BE4}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
