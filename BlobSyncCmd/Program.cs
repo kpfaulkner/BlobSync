@@ -29,16 +29,43 @@ namespace BlobSyncCmd
     {
         static void Main(string[] args)
         {
-            var fileName = args[0];
-            var sigFile = fileName + ".sig";
+            var command = args[0];
 
-            var sig = CommonOps.CreateSignatureForLocalFile(fileName);
-
-
-            using (var f = new FileStream(sigFile, FileMode.Create))
+            if (args.Length == 4)
             {
-                SerializationHelper.WriteBinarySizedBasedSignature(sig, f);    
+                var fileName = args[1];
+                var container = args[2];
+                var blobName = args[3];
+
+                switch (command)
+                {
+                    case "upload":
+
+                        var sigFile = fileName + ".sig";
+
+                        // create sig.
+                        var sig = CommonOps.CreateSignatureForLocalFile(fileName);
+
+                        // upload file/blob
+
+                        // upload sig.
+
+                        break;
+
+                    case "update":
+                        break;
+
+                    default:
+                        Console.WriteLine("blobsynccmd update/upload <local file path> <container> <blobname>");
+                        break;
+                }
+
             }
+            else
+            {
+                Console.WriteLine("blobsynccmd update/upload <local file path> <container> <blobname>");
+            }
+
 
         }
     }
