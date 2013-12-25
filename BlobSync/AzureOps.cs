@@ -27,13 +27,13 @@ using System.Threading.Tasks;
 
 namespace BlobSync
 {
-    class AzureOps : ICloudOps
+    public class AzureOps : ICloudOps
     {
         
         // updates blob if possible.
         // if blob doesn't already exist OR does not have a signature file 
         // then we just upload as usual.
-        public void UpdateRemoteBlobFromLocalFile(string container, string blobName, string localFilePath)
+        public void UploadFile(string container, string blobName, string localFilePath)
         {
             // 1) Does remote blob exist?
             // 2) if so, download existing signature for blob.
@@ -49,16 +49,16 @@ namespace BlobSync
                 var searchResults = CommonOps.SearchLocalFileForSignatures(localFilePath, blobSig);
                 UploadDelta(localFilePath, searchResults, container, blobName);
                 var sig = CommonOps.CreateSignatureForLocalFile(localFilePath);
-                UploadSignatureForBlob(sig);
+                UploadSignatureForBlob(blobName, container,sig);
 
             }
             else
             {
                 // 4) If blob or signature does NOT exist, just upload as normal. No tricky stuff to do here.
                 // 4.1) Generate signature and upload it.
-                UploadFile(localFilePath, container );
+                UploadBlockBlob(localFilePath, container );
                 var sig = CommonOps.CreateSignatureForLocalFile(localFilePath);
-                UploadSignatureForBlob(sig);
+                UploadSignatureForBlob(blobName, container, sig);
 
             }
         }
@@ -71,24 +71,39 @@ namespace BlobSync
 
         }
 
-        public Blob UpdateLocalFileFromRemoteBlob(string container, string blobName, string localFilePath)
-        {
-            Blob newLocalBlob = null;
-
-            return newLocalBlob;
-        }
-
         public SizeBasedCompleteSignature DownloadSignatureForBlob(string container, string blobName)
         {
-            throw new NotImplementedException();
+            var blobSigName = blobName + ".sig";
+
+            SizeBasedCompleteSignature sig;
+
+            using (var stream = new MemoryStream())
+            {
+                DownloadBlob(container, blobSigName, stream);
+                sig = SerializationHelper.ReadSizeBasedBinarySignature(stream);
+            }
+
+            return sig;
         }
 
-        public void UploadSignatureForBlob(SizeBasedCompleteSignature sig)
+        public void UploadSignatureForBlob(string blobName, string containerName, SizeBasedCompleteSignature sig)
         {
-            throw new NotImplementedException();
+            var client = AzureHelper.GetCloudBlobClient();
+            var container = client.GetContainerReference(containerName);
+
+            // upload sig.
+            var sigBlobName = blobName + ".sig";
+            var sigBlob = container.GetBlockBlobReference(sigBlobName);
+
+            using (Stream s = new MemoryStream())
+            {
+                SerializationHelper.WriteBinarySizedBasedSignature(sig, s);
+                s.Seek(0, SeekOrigin.Begin);
+                sigBlob.UploadFromStream(s);
+            }
         }
 
-        public void UploadFile(string localFilePath, string containerName)
+        public void UploadBlockBlob(string localFilePath, string containerName)
         {
             Stream stream = null;
 
@@ -206,47 +221,49 @@ namespace BlobSync
             blob.PutBlockList(blockIdList);
         }
 
-        public Blob DownloadBlob(string containerName, string blobName)
-        {
-            Blob blob = null;
-            var client = AzureHelper.GetCloudBlobClient();
-            
-            var container = client.GetContainerReference(containerName);
-            //container.CreateIfNotExists();
 
+        
+        // download blob to stream
+        public void DownloadBlob(string containerName, string blobName, Stream stream)
+        {
+            var client = AzureHelper.GetCloudBlobClient();
+            var container = client.GetContainerReference(containerName);
             var url = AzureHelper.GenerateUrl(containerName, blobName);
             var blobRef = client.GetBlobReferenceFromServer(new Uri(url));
 
-            blob = ReadBlockBlob(blobRef);
+            ReadBlockBlob(blobRef, stream);
+            
+        }
+        
 
-            return blob;
+        // download blob to particular path.
+        public void DownloadBlob(string containerName, string blobName, string localFilePath)
+        {
+            var client = AzureHelper.GetCloudBlobClient();
+            var container = client.GetContainerReference(containerName);
+            var url = AzureHelper.GenerateUrl(containerName, blobName);
+            var blobRef = client.GetBlobReferenceFromServer(new Uri(url));
 
+            ReadBlockBlob(blobRef, localFilePath);
         }
 
-        private Blob ReadBlockBlob(ICloudBlob blobRef, string fileName = "")
+        private void ReadBlockBlob(ICloudBlob blobRef, Stream stream)
         {
-            var blob = new Blob();
-            blob.BlobSavedToFile = !string.IsNullOrEmpty(fileName);
-            blob.Name = blobRef.Name;
-            blob.FilePath = fileName;
-            
             var blockBlob = blobRef as CloudBlockBlob;
 
+            // no parallel yet.
+            blockBlob.DownloadToStream(stream);
+        }
+
+        private void ReadBlockBlob(ICloudBlob blobRef, string fileName)
+        {            
+      
             // get stream to store.
             using (var stream = CommonHelper.GetStream(fileName))
             {
-
-                // no parallel yet.
-                blockBlob.DownloadToStream(stream);
-
-                if (!blob.BlobSavedToFile)
-                {
-                    var ms = stream as MemoryStream;
-                    blob.Data = ms.ToArray();
-                }
+                ReadBlockBlob( blobRef, stream);
             }
 
-            return blob;
         }
 
     }

@@ -26,7 +26,13 @@ namespace BlobSync
 {
     interface IBlobSync
     {
-        void UploadBlob(Blob blob, string container);
-        Blob DownloadBlob(string container, string blobName);
+        // should upload if existing blob does NOT exist
+        // should update if existing blob DOES exist.
+        void UploadFile(string localFilePath, string container);
+
+        // should download if existing localFilePath does NOT exist
+        // should update local copy if it exists.
+        void DownloadBlob(string container, string blobName, string localFilePath);
+
     }
 }

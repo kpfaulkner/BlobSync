@@ -26,18 +26,9 @@ namespace BlobSync
 {
     // cloud specific ops.
     // ie one implementation for Azure, one for S3 etc etc etc.
-    interface ICloudOps
+    internal interface ICloudOps
     {
-        SizeBasedCompleteSignature DownloadSignatureForBlob(string container, string blobName);
-
-        void UploadSignatureForBlob(SizeBasedCompleteSignature sig);
-
-        void UploadFile(string localFilePath, string container);
-
-        Blob DownloadBlob(string container, string blobName);
-
-        void UpdateRemoteBlobFromLocalFile(string container, string blobName, string localFilePath);
-        Blob UpdateLocalFileFromRemoteBlob(string container, string blobName, string localFilePath);
+        void UploadFile(string container, string blobName, string localFilePath);
 
     }
 }

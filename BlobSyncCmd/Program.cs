@@ -34,21 +34,39 @@ namespace BlobSyncCmd
             if (args.Length == 4)
             {
                 var fileName = args[1];
-                var container = args[2];
+                var containerName = args[2];
                 var blobName = args[3];
+
+                var azureOps = new AzureOps();
 
                 switch (command)
                 {
                     case "upload":
+
+                        azureOps.UploadFile( containerName, blobName, fileName);
 
                         var sigFile = fileName + ".sig";
 
                         // create sig.
                         var sig = CommonOps.CreateSignatureForLocalFile(fileName);
 
+                        var client = AzureHelper.GetCloudBlobClient();
+                        var container = client.GetContainerReference(containerName);
+                        
                         // upload file/blob
+                        var blob = container.GetBlockBlobReference(blobName);
+                        blob.UploadFromFile(fileName, FileMode.Open);
 
                         // upload sig.
+                        var sigBlobName = blobName + ".sig";
+                        var sigBlob = container.GetBlockBlobReference(sigBlobName);
+
+                        using (Stream s = new MemoryStream())
+                        {
+                            SerializationHelper.WriteBinarySizedBasedSignature(sig, s);
+                            s.Seek(0, SeekOrigin.Begin);
+                            sigBlob.UploadFromStream(s);
+                        }
 
                         break;
 

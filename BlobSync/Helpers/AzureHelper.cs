@@ -26,13 +26,15 @@ using System.Threading.Tasks;
 
 namespace BlobSync.Helpers
 {
-    class AzureHelper
+    public class AzureHelper
     {
         static CloudBlobClient BlobClient { get; set; }
 
         const string AzureDetection = "windows.net";
         const string DevAzureDetection = "127.0.0.1";
         const string AzureBaseUrl = "blob.core.windows.net";
+        const string SIGURL = "sigurl";
+        const string SIGCOUNT = "sigcount";
 
         static AzureHelper()
         {
@@ -151,5 +153,28 @@ namespace BlobSync.Helpers
 
             return exists;
         }
+
+        /// <summary>
+        /// Generates signature name
+        /// </summary>
+        /// <param name="container"></param>
+        /// <param name="blobName"></param>        
+        /// <param name="signatureCount">Number of signatures already associated with this blob.</param>
+        /// <returns></returns>
+        private string SetSignatureName(CloudBlobContainer container, string blobName, int signatureCount)
+        {
+            var blob = container.GetBlockBlobReference(blobName);
+            blob.FetchAttributes();
+            var metadata = blob.Metadata;
+            signatureCount++;
+            var sig = string.Format("{0}.{1}.sig", blobName, signatureCount);
+
+            blob.Metadata[SIGURL] = sig;
+            blob.Metadata[SIGCOUNT] = signatureCount.ToString();
+            blob.SetMetadata();
+
+            return sig;
+        }
+
     }
 }
