@@ -56,7 +56,7 @@ namespace BlobSync
             {
                 // 4) If blob or signature does NOT exist, just upload as normal. No tricky stuff to do here.
                 // 4.1) Generate signature and upload it.
-                UploadBlockBlob(localFilePath, container );
+                UploadBlockBlob(localFilePath, container, blobName);
                 var sig = CommonOps.CreateSignatureForLocalFile(localFilePath);
                 UploadSignatureForBlob(blobName, container, sig);
 
@@ -103,7 +103,7 @@ namespace BlobSync
             }
         }
 
-        public void UploadBlockBlob(string localFilePath, string containerName)
+        public void UploadBlockBlob(string localFilePath, string containerName, string blobName)
         {
             Stream stream = null;
 
@@ -111,8 +111,7 @@ namespace BlobSync
             {
                 var client = AzureHelper.GetCloudBlobClient();
 
-                var blobName = AzureHelper.GetBlobNameFromFilePath(localFilePath);
-
+                
                 var container = client.GetContainerReference(containerName);
                 container.CreateIfNotExists();
 

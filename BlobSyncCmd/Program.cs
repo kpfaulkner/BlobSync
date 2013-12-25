@@ -29,59 +29,19 @@ namespace BlobSyncCmd
     {
         static void Main(string[] args)
         {
-            var command = args[0];
-
-            if (args.Length == 4)
+            if (args.Length == 3)
             {
-                var fileName = args[1];
-                var containerName = args[2];
-                var blobName = args[3];
+                var fileName = args[0];
+                var containerName = args[1];
+                var blobName = args[2];
 
                 var azureOps = new AzureOps();
-
-                switch (command)
-                {
-                    case "upload":
-
-                        azureOps.UploadFile( containerName, blobName, fileName);
-
-                        var sigFile = fileName + ".sig";
-
-                        // create sig.
-                        var sig = CommonOps.CreateSignatureForLocalFile(fileName);
-
-                        var client = AzureHelper.GetCloudBlobClient();
-                        var container = client.GetContainerReference(containerName);
-                        
-                        // upload file/blob
-                        var blob = container.GetBlockBlobReference(blobName);
-                        blob.UploadFromFile(fileName, FileMode.Open);
-
-                        // upload sig.
-                        var sigBlobName = blobName + ".sig";
-                        var sigBlob = container.GetBlockBlobReference(sigBlobName);
-
-                        using (Stream s = new MemoryStream())
-                        {
-                            SerializationHelper.WriteBinarySizedBasedSignature(sig, s);
-                            s.Seek(0, SeekOrigin.Begin);
-                            sigBlob.UploadFromStream(s);
-                        }
-
-                        break;
-
-                    case "update":
-                        break;
-
-                    default:
-                        Console.WriteLine("blobsynccmd update/upload <local file path> <container> <blobname>");
-                        break;
-                }
+                azureOps.UploadFile(containerName, blobName, fileName);
 
             }
             else
             {
-                Console.WriteLine("blobsynccmd update/upload <local file path> <container> <blobname>");
+                Console.WriteLine("blobsynccmd <local file path> <container> <blobname>");
             }
 
 

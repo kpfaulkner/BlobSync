@@ -89,7 +89,7 @@ namespace BlobSync.Helpers
         public static void ReadConfig()
         {
             AzureAccountKey = GetConfigValue<string>("AzureAccountKey", "");
-            AzureAccountName = GetConfigValue<string>("AzureAccountNames", "");
+            AzureAccountName = GetConfigValue<string>("AzureAccountName", "");
             SignatureSize = GetConfigValue<int>("SignatureSize", 4210688);
             IsDev = GetConfigValue<string>("IsDev", "");
            
