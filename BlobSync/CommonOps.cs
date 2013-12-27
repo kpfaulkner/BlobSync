@@ -53,7 +53,7 @@ namespace BlobSync
 
                 while ((bytesRead = fs.Read(buffer, 0, ConfigHelper.SignatureSize)) > 0)
                 {
-                    var blockSig = GenerateBlockSig(buffer, offset, (uint)bytesRead, idCount);
+                    var blockSig = GenerateBlockSig(buffer, offset,bytesRead, idCount);
                     List<BlockSignature> sigList;
                     if (!sigDict.TryGetValue(bytesRead, out sigList))
                     {
@@ -150,7 +150,7 @@ namespace BlobSync
                         if (generateFreshSig)
                         {
                             bytesRead = accessor.ReadArray(offset, buffer, 0, windowSize);
-                            currentSig = CreateRollingSignature(buffer);
+                            currentSig = CreateRollingSignature(buffer, (int)bytesRead);
 
                         }
                         else
@@ -167,7 +167,7 @@ namespace BlobSync
                             bytesRead = accessor.ReadArray(offset, buffer, 0, windowSize);
 
                             // check md5 sig.
-                            var md5Sig = CreateMD5Signature(buffer);
+                            var md5Sig = CreateMD5Signature(buffer, (int) bytesRead);
                             var sigsForCurrentRollingSig = sigDict[currentSig.Value];
 
                             // have a matching md5? If so, we have a match.
@@ -265,32 +265,29 @@ namespace BlobSync
         }
 
 
-        internal static BlockSignature GenerateBlockSig(byte[] buffer, long offset, uint blockSize, uint id)
+        internal static BlockSignature GenerateBlockSig(byte[] buffer, long offset, int blockSize, uint id)
         {
             var sig = new BlockSignature();
 
-            var rollingSig = CreateRollingSignature(buffer);
-            var md5Sig = CreateMD5Signature(buffer);
+            var rollingSig = CreateRollingSignature(buffer, blockSize);
+            var md5Sig = CreateMD5Signature(buffer, blockSize);
             sig.RollingSig = rollingSig;
             sig.MD5Signature = md5Sig;
             sig.Offset = offset;
             sig.BlockNumber = id;
-            sig.Size = blockSize;
+            sig.Size = (uint) blockSize;
 
             return sig;
         }
-        internal static byte[] CreateMD5Signature(byte[] byteBlock)
+        internal static byte[] CreateMD5Signature(byte[] byteBlock, int length)
         {
-            var res = md5Hash.ComputeHash(byteBlock);
-
+            var res = md5Hash.ComputeHash(byteBlock, 0, length);
             return res;
         }
 
 
-        public static RollingSignature CreateRollingSignature(byte[] byteBlock)
+        public static RollingSignature CreateRollingSignature(byte[] byteBlock, int length)
         {
-            var length = (uint)byteBlock.Length;
-
             decimal s1 = 0;
             decimal s2 = 0;
 

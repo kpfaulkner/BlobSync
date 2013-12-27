@@ -39,6 +39,9 @@ namespace BlobSync.Helpers
             var sig = new SizeBasedCompleteSignature();
             sig.Signatures = new Dictionary<int, CompleteSignature>();
 
+            // always go to beginning of stream.
+            s.Seek(0, SeekOrigin.Begin);
+
             var reader = new BinaryReader(s);
             int numberOfCompleteSignatures = reader.ReadInt32();
 
