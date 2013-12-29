@@ -25,5 +25,15 @@ namespace BlobSync.Datatypes
 {
     public class SignatureSearchResult
     {
+        public List<BlockSignature> SignaturesToReuse { get; set; }
+        public long FileSize { get; set; }
+
+        public List<RemainingBytes> ByteRangesToUpload { get; set; }
+
+        public SignatureSearchResult()
+        {
+            SignaturesToReuse = new List<BlockSignature>();
+            ByteRangesToUpload = new List<RemainingBytes>();
+        }
     }
 }

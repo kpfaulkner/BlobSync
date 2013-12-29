@@ -60,7 +60,13 @@ namespace BlobSync.Datatypes
         public Dictionary<int, CompleteSignature> Signatures { get; set; }
     }
 
-    internal class RemainingBytes
+    public class UploadedBlock
+    {
+        public string BlockId { get; set; }
+        public long Offset { get; set; }
+    }
+
+    public class RemainingBytes
     {
         /// <summary>
         /// Start offset. Inclusive.
@@ -71,6 +77,7 @@ namespace BlobSync.Datatypes
         /// End offset. Inclusive.
         /// </summary>
         public long EndOffset { get; set; }
+
     }
 
 }

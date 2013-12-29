@@ -68,7 +68,84 @@ namespace BlobSync
         // container and blob name.
         private void UploadDelta(string localFilePath, SignatureSearchResult searchResults, string container, string blobName)
         {
+            var allUploadedBlocks = new List<UploadedBlock>();
 
+            // loop through each section of the search results.
+            // create blob from each RemainingBytes instances.
+            // reuse the blocks already in use.
+            foreach (var remainingBytes in searchResults.ByteRangesToUpload)
+            {
+                var uploadedBlockList = UploadBytes(remainingBytes, localFilePath, container, blobName);
+                allUploadedBlocks.AddRange( uploadedBlockList);
+            }
+
+            // once we're here we should have uploaded ALL new data to Azure Blob Storage.
+            // We then need to send the "construct" blob message.
+            
+        }
+
+        private List<UploadedBlock> UploadBytes(RemainingBytes remainingBytes, string localFilePath, string containerName, string blobName)
+        {
+            var uploadedBlockList = new List<UploadedBlock>();
+
+            try
+            {
+                var client = AzureHelper.GetCloudBlobClient();
+                var container = client.GetContainerReference(containerName);
+                container.CreateIfNotExists();
+                var blob = container.GetBlockBlobReference(blobName);
+
+                var blockCount =
+                    Math.Round((double) (remainingBytes.EndOffset - remainingBytes.BeginOffset + 1)/
+                               (double) ConfigHelper.SignatureSize, MidpointRounding.AwayFromZero);
+
+                using (var stream = new FileStream(localFilePath, FileMode.Open))
+                {
+                    for (var offset = remainingBytes.BeginOffset; offset <= remainingBytes.EndOffset;)
+                    {
+                        var sizeToRead = offset + ConfigHelper.SignatureSize <= remainingBytes.EndOffset
+                            ? ConfigHelper.SignatureSize
+                            : remainingBytes.EndOffset - offset + 1;
+
+                        // seek to the offset we need. Dont forget remaining bytes may be bigger than the signature size
+                        // we want to deal with.
+                        stream.Seek(offset, SeekOrigin.Begin);
+                        var bytesToRead = new byte[sizeToRead];
+                        stream.Read(bytesToRead, 0, (int) sizeToRead);
+
+                        var sig = CommonOps.GenerateBlockSig(bytesToRead, offset, (int) sizeToRead, 0);
+                        var blockId = Convert.ToBase64String(sig.MD5Signature);
+                        
+                        // yes, putting into memory stream is probably a waste here.
+                        using (var ms = new MemoryStream(bytesToRead))
+                        {
+                            blob.PutBlock(blockId, ms, "");
+                        }
+
+                        // store the block id that is associated with this byte range.
+                        uploadedBlockList.Add(new UploadedBlock()
+                        {
+                            BlockId = blockId,
+                            Offset = offset
+                        });
+
+                        offset += sizeToRead;
+
+                    }
+                }
+                
+            }
+            catch (ArgumentException ex)
+            {
+                // probably bad container.
+                Console.WriteLine("Argument Exception " + ex.ToString());
+            }
+            finally
+            {
+
+            }
+
+            return uploadedBlockList;
         }
 
         public SizeBasedCompleteSignature DownloadSignatureForBlob(string container, string blobName)

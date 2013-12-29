@@ -101,7 +101,7 @@ namespace BlobSync
             // get sizes of signatures (block sizes) from existing sig.
             // then loop through all sizes looking for matches in local file.
             var signatureSizes = sig.Signatures.Keys.ToList();
-            signatureSizes.Sort();
+            //signatureSizes.Sort();
 
             // byte ranges that have not been matched to existing blocks yet.
             var remainingByteList = new List<RemainingBytes>();
@@ -122,6 +122,8 @@ namespace BlobSync
                 }
             }
 
+            result.ByteRangesToUpload = remainingByteList;
+            result.SignaturesToReuse = signaturesToReuse;
             return result;
         }
 
