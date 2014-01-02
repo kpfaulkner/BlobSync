@@ -15,6 +15,7 @@
 // </copyright>
 //-----------------------------------------------------------------------
 
+using System.Runtime.Remoting.Messaging;
 using BlobSync.Datatypes;
 using BlobSync.Helpers;
 using Microsoft.WindowsAzure.Storage.Blob;
@@ -56,7 +57,20 @@ namespace BlobSync
             {
                 // 4) If blob or signature does NOT exist, just upload as normal. No tricky stuff to do here.
                 // 4.1) Generate signature and upload it.
-                UploadBlockBlob(localFilePath, container, blobName);
+                //UploadBlockBlob(localFilePath, container, blobName);
+
+                // testing idea
+                var f = File.Open(localFilePath, FileMode.Open);
+                var fileLength = f.Length;
+                f.Close();
+
+                var remainingBytes = new RemainingBytes()
+                {
+                    BeginOffset = 0,
+                    EndOffset = fileLength - 1
+                };
+                UploadBytes(remainingBytes, localFilePath, container , blobName);
+                
                 var sig = CommonOps.CreateSignatureForLocalFile(localFilePath);
                 UploadSignatureForBlob(blobName, container, sig);
 
@@ -66,7 +80,7 @@ namespace BlobSync
         // Uploads differences between existing blob and updated local file.
         // Have local file to reference, the search results (indicating which parts need to be uploaded)
         // container and blob name.
-        private void UploadDelta(string localFilePath, SignatureSearchResult searchResults, string container, string blobName)
+        private void UploadDelta(string localFilePath, SignatureSearchResult searchResults, string containerName, string blobName)
         {
             var allUploadedBlocks = new List<UploadedBlock>();
 
@@ -75,13 +89,28 @@ namespace BlobSync
             // reuse the blocks already in use.
             foreach (var remainingBytes in searchResults.ByteRangesToUpload)
             {
-                var uploadedBlockList = UploadBytes(remainingBytes, localFilePath, container, blobName);
+                var uploadedBlockList = UploadBytes(remainingBytes, localFilePath, containerName, blobName);
                 allUploadedBlocks.AddRange( uploadedBlockList);
             }
 
             // once we're here we should have uploaded ALL new data to Azure Blob Storage.
             // We then need to send the "construct" blob message.
-            
+            // loop through existing blocks and get offset + blockId's.
+            foreach (var sig in searchResults.SignaturesToReuse)
+            {
+                var blockId = Convert.ToBase64String(sig.MD5Signature);
+                allUploadedBlocks.Add(new UploadedBlock() {BlockId = blockId, Offset = sig.Offset});
+            }
+
+            // needs to be sorted by offset so the final blob constructed is in correct order.
+            var res = (from b in allUploadedBlocks orderby b.Offset ascending select b.BlockId);
+
+            var client = AzureHelper.GetCloudBlobClient();
+            var container = client.GetContainerReference(containerName);
+            var blob = container.GetBlockBlobReference(blobName);
+
+            blob.PutBlockList(res.ToArray());
+
         }
 
         private List<UploadedBlock> UploadBytes(RemainingBytes remainingBytes, string localFilePath, string containerName, string blobName)
@@ -119,7 +148,9 @@ namespace BlobSync
                         // yes, putting into memory stream is probably a waste here.
                         using (var ms = new MemoryStream(bytesToRead))
                         {
-                            blob.PutBlock(blockId, ms, "");
+                            var options = new BlobRequestOptions() {ServerTimeout = new TimeSpan(0, 90, 0)};
+                            blob.PutBlock(blockId, ms,null,null, options);
+                           
                         }
 
                         // store the block id that is associated with this byte range.
@@ -148,9 +179,10 @@ namespace BlobSync
             return uploadedBlockList;
         }
 
+
         public SizeBasedCompleteSignature DownloadSignatureForBlob(string container, string blobName)
         {
-            var blobSigName = blobName + ".sig";
+            var blobSigName = AzureHelper.GetSignatureBlobName(container, blobName);
 
             SizeBasedCompleteSignature sig;
 
@@ -169,7 +201,8 @@ namespace BlobSync
             var container = client.GetContainerReference(containerName);
 
             // upload sig.
-            var sigBlobName = blobName + ".sig";
+            var sigBlobName = AzureHelper.SetSignatureName(containerName, blobName);
+
             var sigBlob = container.GetBlockBlobReference(sigBlobName);
 
             using (Stream s = new MemoryStream())

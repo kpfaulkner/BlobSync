@@ -135,11 +135,8 @@ namespace BlobSync.Helpers
             try
             {
                 var client = GetCloudBlobClient();
-
-                var url = GenerateUrl(container, blobName);
-
-                // sig file will be same of blob name except with extension ".sig"
-                url += ".sig";
+                var sigBlobName = GetSignatureBlobName(container, blobName);
+                var url = GenerateUrl(container, sigBlobName);
 
                 var blob = client.GetBlobReferenceFromServer(new Uri(url));
 
@@ -154,24 +151,45 @@ namespace BlobSync.Helpers
             return exists;
         }
 
-        /// <summary>
-        /// Generates signature name
-        /// </summary>
-        /// <param name="container"></param>
-        /// <param name="blobName"></param>        
-        /// <param name="signatureCount">Number of signatures already associated with this blob.</param>
-        /// <returns></returns>
-        private string SetSignatureName(CloudBlobContainer container, string blobName, int signatureCount)
+        // sets signature name as metadata in blob
+        // returns the signature name that will be uploaded.
+        public static string SetSignatureName(string containerName, string blobName)
         {
+            var client = AzureHelper.GetCloudBlobClient();
+            var container = client.GetContainerReference(containerName);
             var blob = container.GetBlockBlobReference(blobName);
+
             blob.FetchAttributes();
-            var metadata = blob.Metadata;
-            signatureCount++;
-            var sig = string.Format("{0}.{1}.sig", blobName, signatureCount);
+
+            int sigCount = 0;
+            if (blob.Metadata.ContainsKey(SIGCOUNT))
+            {
+                sigCount = Convert.ToInt32(blob.Metadata[SIGCOUNT]);
+                sigCount++;
+            }
+
+            var sig = string.Format("{0}.{1}.sig", blobName, sigCount);
 
             blob.Metadata[SIGURL] = sig;
-            blob.Metadata[SIGCOUNT] = signatureCount.ToString();
+            blob.Metadata[SIGCOUNT] = sigCount.ToString();
             blob.SetMetadata();
+
+            return sig;
+        }
+
+        public static string GetSignatureBlobName(string containerName, string blobName)
+        {
+            var client = AzureHelper.GetCloudBlobClient();
+            var container = client.GetContainerReference(containerName);
+            var blob = container.GetBlockBlobReference(blobName);
+
+            blob.FetchAttributes();
+
+            var sig = "";
+            if (blob.Metadata.ContainsKey(SIGURL))
+            {
+                sig = blob.Metadata[SIGURL];
+            }
 
             return sig;
         }
