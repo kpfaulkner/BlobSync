@@ -29,19 +29,32 @@ namespace BlobSyncCmd
     {
         static void Main(string[] args)
         {
-            if (args.Length == 3)
+            if (args.Length == 4)
             {
-                var fileName = args[0];
-                var containerName = args[1];
-                var blobName = args[2];
-
+                var command = args[0];
+                var fileName = args[1];
+                var containerName = args[2];
+                var blobName = args[3];
                 var azureOps = new AzureOps();
-                azureOps.UploadFile(containerName, blobName, fileName);
 
+                switch (command)
+                {
+                    case "upload":
+                        azureOps.UploadFile(containerName, blobName, fileName);
+                        break;
+
+                    case "download":
+                        azureOps.DownloadBlob(containerName, blobName, fileName);
+                        break;
+
+                    default:
+                        Console.WriteLine("blobsynccmd upload/download <local file path> <container> <blobname>");
+
+                }
             }
             else
             {
-                Console.WriteLine("blobsynccmd <local file path> <container> <blobname>");
+                Console.WriteLine("blobsynccmd upload/download <local file path> <container> <blobname>");
             }
 
 
