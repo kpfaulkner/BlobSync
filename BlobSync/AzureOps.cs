@@ -34,11 +34,11 @@ namespace BlobSync
         // updates blob if possible.
         // if blob doesn't already exist OR does not have a signature file 
         // then we just upload as usual.
-        public void UploadFile(string container, string blobName, string localFilePath)
+        public void UploadFile(string containerName, string blobName, string localFilePath)
         {
             // 1) Does remote blob exist?
             // 2) if so, download existing signature for blob.
-            if (AzureHelper.DoesBlobExist(container, blobName) && AzureHelper.DoesBlobSignatureExist(container, blobName))
+            if (AzureHelper.DoesBlobExist(containerName, blobName) && AzureHelper.DoesBlobSignatureExist(containerName, blobName))
             {
                 // 3) If blob exists and have signature, then let the magic begin.
                 // 3.1) Download existing blob signature from Azure.
@@ -46,20 +46,19 @@ namespace BlobSync
                 // 3.3) Upload differences to Azure
                 // 3.4) Upload new signature.s
 
-                var blobSig = DownloadSignatureForBlob(container, blobName);
+                var blobSig = DownloadSignatureForBlob(containerName, blobName);
                 var searchResults = CommonOps.SearchLocalFileForSignatures(localFilePath, blobSig);
-                UploadDelta(localFilePath, searchResults, container, blobName);
+                UploadDelta(localFilePath, searchResults, containerName, blobName);
                 var sig = CommonOps.CreateSignatureForLocalFile(localFilePath);
-                UploadSignatureForBlob(blobName, container,sig);
+                UploadSignatureForBlob(blobName, containerName, sig);
 
             }
             else
             {
                 // 4) If blob or signature does NOT exist, just upload as normal. No tricky stuff to do here.
                 // 4.1) Generate signature and upload it.
-                //UploadBlockBlob(localFilePath, container, blobName);
-
-                // testing idea
+               
+                // refactor into separate method.
                 var f = File.Open(localFilePath, FileMode.Open);
                 var fileLength = f.Length;
                 f.Close();
@@ -69,10 +68,18 @@ namespace BlobSync
                     BeginOffset = 0,
                     EndOffset = fileLength - 1
                 };
-                UploadBytes(remainingBytes, localFilePath, container , blobName);
+
+                var allUploadedBlocks = UploadBytes(remainingBytes, localFilePath, containerName, blobName);
+                var res = (from b in allUploadedBlocks orderby b.Offset ascending select b.BlockId);
+
+                var client = AzureHelper.GetCloudBlobClient();
+                var container = client.GetContainerReference(containerName);
+                var blob = container.GetBlockBlobReference(blobName);
+
+                blob.PutBlockList(res.ToArray());
                 
                 var sig = CommonOps.CreateSignatureForLocalFile(localFilePath);
-                UploadSignatureForBlob(blobName, container, sig);
+                UploadSignatureForBlob(blobName, containerName, sig);
 
             }
         }

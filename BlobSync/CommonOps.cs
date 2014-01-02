@@ -146,6 +146,7 @@ namespace BlobSync
                     var generateFreshSig = true;
                     var bytesRead = 0L;
                     RollingSignature? currentSig = null;
+                    long oldEndOffset = byteRange.BeginOffset;
 
                     do
                     {
@@ -180,6 +181,17 @@ namespace BlobSync
 
                             if (matchingSigs.Any())
                             {
+                                // need to add any byte ranges between oldEndOffset and offset as bytes remaining (ie not part of any sig).
+                                if (oldEndOffset != offset)
+                                {
+                                    newRemainingBytes.Add(new RemainingBytes()
+                                    {
+                                        BeginOffset = oldEndOffset,
+                                        EndOffset = offset - 1
+                                    });
+                                    
+                                }
+
                                 var matchingSig = matchingSigs[0];
 
                                 // when storing which existing sig to use, make sure we know the offset in the NEW file it should appear.
@@ -187,6 +199,7 @@ namespace BlobSync
                                 signaturesToReuse.Add(matchingSig);
                                 offset += windowSize;
                                 generateFreshSig = true;
+                                oldEndOffset = offset;
                             }
                             else
                             {
@@ -207,7 +220,7 @@ namespace BlobSync
                     {
                         newRemainingBytes.Add(new RemainingBytes()
                         {
-                            BeginOffset = offset,
+                            BeginOffset = oldEndOffset,
                             EndOffset = byteRange.EndOffset
                         });
                     }
