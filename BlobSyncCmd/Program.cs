@@ -49,7 +49,7 @@ namespace BlobSyncCmd
 
                     default:
                         Console.WriteLine("blobsynccmd upload/download <local file path> <container> <blobname>");
-
+                        break;
                 }
             }
             else

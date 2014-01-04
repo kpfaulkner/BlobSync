@@ -194,5 +194,16 @@ namespace BlobSync.Helpers
             return sig;
         }
 
+
+        internal static long GetBlobSize(string containerName, string blobName)
+        {
+            var client = AzureHelper.GetCloudBlobClient();
+            var container = client.GetContainerReference(containerName);
+            var blob = container.GetBlockBlobReference(blobName);
+
+            var length = blob.Properties.Length;
+            return length;
+
+        }
     }
 }

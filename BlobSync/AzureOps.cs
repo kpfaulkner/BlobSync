@@ -15,7 +15,10 @@
 // </copyright>
 //-----------------------------------------------------------------------
 
+using System.ComponentModel;
 using System.Runtime.Remoting.Messaging;
+using System.Security.Cryptography;
+using System.Text.RegularExpressions;
 using BlobSync.Datatypes;
 using BlobSync.Helpers;
 using Microsoft.WindowsAzure.Storage.Blob;
@@ -57,11 +60,8 @@ namespace BlobSync
             {
                 // 4) If blob or signature does NOT exist, just upload as normal. No tricky stuff to do here.
                 // 4.1) Generate signature and upload it.
-               
-                // refactor into separate method.
-                var f = File.Open(localFilePath, FileMode.Open);
-                var fileLength = f.Length;
-                f.Close();
+
+                var fileLength = CommonOps.GetFileSize(localFilePath);
 
                 var remainingBytes = new RemainingBytes()
                 {
@@ -69,19 +69,23 @@ namespace BlobSync
                     EndOffset = fileLength - 1
                 };
 
+                // upload all bytes of new file. UploadBytes method will break into appropriate sized blocks.
                 var allUploadedBlocks = UploadBytes(remainingBytes, localFilePath, containerName, blobName);
                 var res = (from b in allUploadedBlocks orderby b.Offset ascending select b.BlockId);
-
-                var client = AzureHelper.GetCloudBlobClient();
-                var container = client.GetContainerReference(containerName);
-                var blob = container.GetBlockBlobReference(blobName);
-
-                blob.PutBlockList(res.ToArray());
+                PutBlockList(res.ToArray(), containerName, blobName);
                 
                 var sig = CommonOps.CreateSignatureForLocalFile(localFilePath);
                 UploadSignatureForBlob(blobName, containerName, sig);
 
             }
+        }
+
+        private void PutBlockList(string[] blockIdArray, string containerName, string blobName)
+        {
+            var client = AzureHelper.GetCloudBlobClient();
+            var container = client.GetContainerReference(containerName);
+            var blob = container.GetBlockBlobReference(blobName);
+            blob.PutBlockList(blockIdArray);    
         }
 
         // Uploads differences between existing blob and updated local file.
@@ -111,12 +115,7 @@ namespace BlobSync
 
             // needs to be sorted by offset so the final blob constructed is in correct order.
             var res = (from b in allUploadedBlocks orderby b.Offset ascending select b.BlockId);
-
-            var client = AzureHelper.GetCloudBlobClient();
-            var container = client.GetContainerReference(containerName);
-            var blob = container.GetBlockBlobReference(blobName);
-
-            blob.PutBlockList(res.ToArray());
+            PutBlockList(res.ToArray(), containerName, blobName);
 
         }
 
@@ -350,17 +349,156 @@ namespace BlobSync
             ReadBlockBlob(blobRef, stream);
             
         }
-        
 
-        // download blob to particular path.
+
         public void DownloadBlob(string containerName, string blobName, string localFilePath)
         {
-            var client = AzureHelper.GetCloudBlobClient();
-            var container = client.GetContainerReference(containerName);
-            var url = AzureHelper.GenerateUrl(containerName, blobName);
-            var blobRef = client.GetBlobReferenceFromServer(new Uri(url));
+            if (CommonOps.DoesFileExist(localFilePath))
+            {
+                // local file exists.
+                // 1) generate sig for local file.
+                // 2) download sig for blob.
 
-            ReadBlockBlob(blobRef, localFilePath);
+                var blobSig = DownloadSignatureForBlob(containerName, blobName);
+                var localSig = CommonOps.CreateSignatureForLocalFile(localFilePath);
+                var searchResults = CommonOps.SearchLocalFileForSignatures(localFilePath, blobSig);
+
+                // we now have a list of which blocks are already in the local file (searchResults.SignaturesToReuse)
+                // We need to then determine the byteranges which are NOT covered by these blocks
+                // and download those.
+                // Then we need to get the blocks that already exist in the local file, read those then write them to the new file.
+                var byteRangesToDownload = GenerateByteRangesOfBlobToDownload(searchResults.SignaturesToReuse,
+                    containerName, blobName);
+
+                RegenerateBlob(containerName, blobName, byteRangesToDownload, localFilePath, searchResults.SignaturesToReuse, blobSig);
+                
+            }
+            else
+            {
+                // download fresh copy.
+                // get stream to store.
+                using (var stream = CommonHelper.GetStream(localFilePath))
+                {
+                    DownloadBlob(containerName, blobName, stream);
+                }
+            }
+        }
+
+        // regenerate blob locally.
+        // we need to either download byte ranges from Azure.
+        // OR
+        // need to copy from local file.
+        private void RegenerateBlob(string containerName, string blobName, List<RemainingBytes> byteRangesToDownload, string localFilePath, List<BlockSignature> reusableBlockSignatures, SizeBasedCompleteSignature blobSig )
+        {
+            // removing size from the equation.
+            var allBlobSigs =
+                blobSig.Signatures.Values.SelectMany(x => x.SignatureList).OrderBy(a => a.Offset).ToList();
+
+            // LUT to see if block is to be reused or not.
+            var reusableBlockDict = CommonOps.GenerateBlockDict(reusableBlockSignatures.ToArray());
+
+            var offset = 0L;
+
+            using (var localStream = new FileStream( localFilePath, FileMode.Open))
+            using (var newStream = new FileStream( localFilePath+".new", FileMode.Create))
+            {
+                // go through all sigs in offset order....  determine if can reuse or need to download.
+                foreach (var sig in allBlobSigs)
+                {
+                    var haveMatch = false;
+                    if (reusableBlockDict.ContainsKey(sig.RollingSig))
+                    {
+                        // have a match... so will reuse local file.
+                        var localSig = reusableBlockDict[sig.RollingSig];
+
+                        var matchingLocalSigs =
+                                localSig.Where(s => s.MD5Signature.SequenceEqual(sig.MD5Signature))
+                                    .Select(n => n)
+                                    .ToList();
+
+                        if (matchingLocalSigs.Any())
+                        {
+                            // have a match.
+                            var matchingLocalSig = matchingLocalSigs[0];
+                            
+                            // huge amount of wasted allocations...  maybe move this.
+                            var buffer = new byte[matchingLocalSig.Size];
+
+                            localStream.Seek(matchingLocalSig.Offset, SeekOrigin.Begin);
+                            localStream.Read(buffer, 0, (int) matchingLocalSig.Size);
+
+                            newStream.Seek(sig.Offset, SeekOrigin.Begin);
+                            newStream.Write( buffer, 0, (int) matchingLocalSig.Size);
+
+                            haveMatch = true;
+                            offset += matchingLocalSig.Size;
+                        }
+
+                    }
+
+                    if (!haveMatch)
+                    {
+                        // check if we have byte ranges starting at offset.
+                        var byteRange =
+                            (from b in byteRangesToDownload where b.BeginOffset == offset select b).FirstOrDefault();
+                        if (byteRange != null)
+                        {
+                            // download bytes.
+                            // 
+                        }
+                    }
+                }
+            }
+        }
+
+        private List<RemainingBytes> GenerateByteRangesOfBlobToDownload(List<BlockSignature> sigList, string containerName, string blobName)
+        {
+
+            var blobSize = AzureHelper.GetBlobSize(containerName, blobName);
+            var remainingBytesList = new List<RemainingBytes>();
+
+            var sortedSigs = (from sig in sigList orderby sig.Offset ascending select sig).ToList();
+
+            // loop through every signature... yes, probably inefficient but should be quick enough to 
+            // not be an issue.
+            var count = 0;
+            while (count < sortedSigs.Count - 1)
+            {
+                // sig and next sig.
+                var sig1 = sortedSigs[count];
+                var sig2 = sortedSigs[count + 1];
+
+                if (count == 0 && sig1.Offset != 0)
+                {
+                    remainingBytesList.Add(new RemainingBytes() {BeginOffset = 0, EndOffset = sig1.Offset - 1});
+                }
+                else
+                {
+                    // if NOT contiguous, then add to remaining bytes.
+                    if (sig1.Offset + sig1.Size != sig2.Offset)
+                    {
+                        remainingBytesList.Add(new RemainingBytes()
+                        {
+                            BeginOffset = sig1.Offset + sig1.Size,
+                            EndOffset = sig2.Offset - 1
+                        });
+                    }
+                }
+
+                count++;
+            }
+
+            var lastSig = sortedSigs.Last();
+            if (lastSig.Offset + lastSig.Size < blobSize)
+            {
+                remainingBytesList.Add(new RemainingBytes()
+                {
+                    BeginOffset = lastSig.Offset + lastSig.Size,
+                    EndOffset = blobSize -1
+                });
+            }
+
+            return remainingBytesList;
         }
 
         private void ReadBlockBlob(ICloudBlob blobRef, Stream stream)

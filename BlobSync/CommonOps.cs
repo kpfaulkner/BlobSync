@@ -82,6 +82,20 @@ namespace BlobSync
             return sizedBaseSignature;
         }
 
+        public static long GetFileSize(string localFilePath)
+        {
+            var f = File.Open(localFilePath, FileMode.Open);
+            var fileLength = f.Length;
+            f.Close();
+
+            return fileLength;
+        }
+
+        public static bool DoesFileExist(string localFilePath)
+        {
+            return File.Exists(localFilePath);
+        }
+
         public static SignatureSearchResult SearchLocalFileForSignatures(string localFilePath, SizeBasedCompleteSignature sig)
         {
             var result = new SignatureSearchResult();
@@ -234,15 +248,21 @@ namespace BlobSync
             return newRemainingBytes;
         }
 
+        internal static Dictionary<RollingSignature, List<BlockSignature>> GenerateBlockDict(CompleteSignature sig)
+        {
+            return GenerateBlockDict(sig.SignatureList);
+        }
+
+
         // generates a dictionary with rolling sig as the key
         // BUT it assumes that the signatures passed as param are all of the same
         // signature size. 
-        internal static Dictionary<RollingSignature, List<BlockSignature>> GenerateBlockDict(CompleteSignature sig)
+        internal static Dictionary<RollingSignature, List<BlockSignature>> GenerateBlockDict(BlockSignature[] sigArray)
         {
             var blockDict = new Dictionary<RollingSignature, List<BlockSignature>>();
 
             List<BlockSignature> bsl;
-            foreach (var element in sig.SignatureList)
+            foreach (var element in sigArray)
             {
                 if (blockDict.TryGetValue(element.RollingSig, out bsl))
                 {
