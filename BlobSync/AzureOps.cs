@@ -367,7 +367,7 @@ namespace BlobSync
                 // We need to then determine the byteranges which are NOT covered by these blocks
                 // and download those.
                 // Then we need to get the blocks that already exist in the local file, read those then write them to the new file.
-                var byteRangesToDownload = GenerateByteRangesOfBlobToDownload(searchResults.SignaturesToReuse,
+                var byteRangesToDownload = GenerateByteRangesOfBlobToDownload(searchResults.SignaturesToReuse,blobSig,
                     containerName, blobName);
 
                 RegenerateBlob(containerName, blobName, byteRangesToDownload, localFilePath, searchResults.SignaturesToReuse, blobSig);
@@ -444,18 +444,38 @@ namespace BlobSync
                         if (byteRange != null)
                         {
                             // download bytes.
-                            // 
+                            var blobBytes = DownloadBytes(containerName, blobName, byteRange.BeginOffset,
+                                byteRange.EndOffset);
+
+                            newStream.Seek(sig.Offset, SeekOrigin.Begin);
+                            newStream.Write(blobBytes, 0, (int)(byteRange.EndOffset - byteRange.BeginOffset + 1));
+
+                            offset += (byteRange.EndOffset - byteRange.BeginOffset + 1);
                         }
                     }
                 }
             }
         }
 
-        private List<RemainingBytes> GenerateByteRangesOfBlobToDownload(List<BlockSignature> sigList, string containerName, string blobName)
+        private byte[] DownloadBytes(string containerName, string blobName, long beginOffset, long endOffset)
+        {
+            var client = AzureHelper.GetCloudBlobClient();
+            var container = client.GetContainerReference(containerName);
+            var blobRef = container.GetBlockBlobReference(blobName);
+
+            var buffer = new byte[ endOffset - beginOffset +1];
+            blobRef.DownloadRangeToByteArray(buffer, 0, beginOffset, endOffset - beginOffset + 1);
+
+            return buffer;
+        }
+
+        private List<RemainingBytes> GenerateByteRangesOfBlobToDownload(List<BlockSignature> sigList, SizeBasedCompleteSignature blobSig, string containerName, string blobName)
         {
 
             var blobSize = AzureHelper.GetBlobSize(containerName, blobName);
             var remainingBytesList = new List<RemainingBytes>();
+            var allBlobSigs =
+               blobSig.Signatures.Values.SelectMany(x => x.SignatureList).OrderBy(a => a.Offset).ToList();
 
             var sortedSigs = (from sig in sigList orderby sig.Offset ascending select sig).ToList();
 
