@@ -469,46 +469,41 @@ namespace BlobSync
             return buffer;
         }
 
-        private List<RemainingBytes> GenerateByteRangesOfBlobToDownload(List<BlockSignature> sigList, SizeBasedCompleteSignature blobSig, string containerName, string blobName)
+        private List<RemainingBytes> GenerateByteRangesOfBlobToDownload(List<BlockSignature> sigsToReuseList, SizeBasedCompleteSignature cloudBlobSig, string containerName, string blobName)
         {
 
             var blobSize = AzureHelper.GetBlobSize(containerName, blobName);
             var remainingBytesList = new List<RemainingBytes>();
-            var allBlobSigs =
-               blobSig.Signatures.Values.SelectMany(x => x.SignatureList).OrderBy(a => a.Offset).ToList();
+            var allBlobSigs = cloudBlobSig.Signatures.Values.SelectMany(x => x.SignatureList).OrderBy(a => a.Offset).ToList();
 
-            var sortedSigs = (from sig in sigList orderby sig.Offset ascending select sig).ToList();
+            var sortedSigs = (from sig in sigsToReuseList orderby sig.Offset ascending select sig).ToList();
 
-            // loop through every signature... yes, probably inefficient but should be quick enough to 
-            // not be an issue.
+
+            // loop through all cloudBlobSigs.
+            // If have a match in sigsToReuse, skip it.
+            // otherwise, take note of offset and size to download.
+
             var count = 0;
-            while (count < sortedSigs.Count - 1)
+            while (count < allBlobSigs.Count - 1)
             {
                 // sig and next sig.
-                var sig1 = sortedSigs[count];
-                var sig2 = sortedSigs[count + 1];
+                var sig1 = allBlobSigs[count];
+                var sig2 = allBlobSigs[count + 1];
 
-                if (count == 0 && sig1.Offset != 0)
+                // check if sig is already in local file.
+                var haveMatchingSig = sigsToReuseList.Any(s => s.MD5Signature == sig1.MD5Signature);
+                if (!haveMatchingSig)
                 {
-                    remainingBytesList.Add(new RemainingBytes() {BeginOffset = 0, EndOffset = sig1.Offset - 1});
+                    remainingBytesList.Add(new RemainingBytes()
+                       {
+                           BeginOffset = sig1.Offset,
+                           EndOffset = sig2.Offset - 1
+                       });
                 }
-                else
-                {
-                    // if NOT contiguous, then add to remaining bytes.
-                    if (sig1.Offset + sig1.Size != sig2.Offset)
-                    {
-                        remainingBytesList.Add(new RemainingBytes()
-                        {
-                            BeginOffset = sig1.Offset + sig1.Size,
-                            EndOffset = sig2.Offset - 1
-                        });
-                    }
-                }
-
                 count++;
             }
 
-            var lastSig = sortedSigs.Last();
+            var lastSig = allBlobSigs.Last();
             if (lastSig.Offset + lastSig.Size < blobSize)
             {
                 remainingBytesList.Add(new RemainingBytes()

@@ -13,7 +13,7 @@ Add an App.config to the BlobSyncCmd project and add the entries:
 Compile the solution then you'll have an example executable called BlobSyncCmd.
 As an example usage of uploading files then uploading deltas, find a suitably large file (say test.txt) and issue the command (from command prompt):
 
-blobsynccmd.exe test.txt mycontainer myblob
+blobsynccmd.exe upload test.txt mycontainer myblob
 
 This will upload the file into a container called mycontainer and the blob will be called myblob. All rather unexciting (so far)
 
@@ -21,7 +21,7 @@ Now, modify (or make a copy and modify) test.txt.
 
 Reissue the same command as before:
 
-blobsynccmd.exe test.txt mycontainer myblob
+blobsynccmd.exe upload test.txt mycontainer myblob
 
 This time around, it has detected which parts of the file need to be uploaded and which can be reused from the previous version.
 The granularity of what needs to be uploaded is based off the "SignatureSize" in the app.config. In this case we're dealing with 100k chunks.

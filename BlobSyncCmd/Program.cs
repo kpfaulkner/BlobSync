@@ -29,10 +29,13 @@ namespace BlobSyncCmd
     {
         static void Main(string[] args)
         {
+            string command;
+            string fileName;
+
             if (args.Length == 4)
             {
-                var command = args[0];
-                var fileName = args[1];
+                command = args[0];
+                fileName = args[1];
                 var containerName = args[2];
                 var blobName = args[3];
                 var azureOps = new AzureOps();
@@ -48,13 +51,37 @@ namespace BlobSyncCmd
                         break;
 
                     default:
-                        Console.WriteLine("blobsynccmd upload/download <local file path> <container> <blobname>");
+                        Console.WriteLine("blobsynccmd upload/download/createsig <local file path> <container> <blobname>");
                         break;
                 }
             }
+
+            if (args.Length == 2)
+            {
+                command = args[0];
+                fileName = args[1];
+
+                switch (command)
+                {
+                    case "createsig":
+                        var sig = CommonOps.CreateSignatureForLocalFile(fileName);
+
+                        var sigFileName = fileName + ".sig";
+                        using (Stream s = new FileStream(sigFileName, FileMode.Create))
+                        {
+                            SerializationHelper.WriteBinarySizedBasedSignature(sig, s);
+                        }
+
+                        break;
+                    default:
+                        Console.WriteLine("blobsynccmd upload/download/createsig <local file path> <container> <blobname>");
+                        break;
+                }
+                
+            }
             else
             {
-                Console.WriteLine("blobsynccmd upload/download <local file path> <container> <blobname>");
+                Console.WriteLine("blobsynccmd upload/download/createsig <local file path> <container> <blobname>");
             }
 
 
