@@ -28,6 +28,7 @@ using System.IO;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
+using Microsoft.WindowsAzure.Storage;
 
 namespace BlobSync
 {
@@ -85,7 +86,10 @@ namespace BlobSync
             var client = AzureHelper.GetCloudBlobClient();
             var container = client.GetContainerReference(containerName);
             var blob = container.GetBlockBlobReference(blobName);
-            blob.PutBlockList(blockIdArray);    
+
+            var blobIdList = blob.DownloadBlockList(BlockListingFilter.Committed);
+            var overlap = (from b in blobIdList where blockIdArray.Contains(b.Name) select b).ToList();
+            blob.PutBlockList(blockIdArray);
         }
 
         // Uploads differences between existing blob and updated local file.
