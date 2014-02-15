@@ -459,6 +459,9 @@ namespace BlobSync
                     }
                 }
             }
+
+            // rename .new file to original
+            File.Replace(localFilePath + ".new", localFilePath,null);
         }
 
         private byte[] DownloadBytes(string containerName, string blobName, long beginOffset, long endOffset)
