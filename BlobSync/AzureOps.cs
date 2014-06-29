@@ -38,7 +38,7 @@ namespace BlobSync
         // updates blob if possible.
         // if blob doesn't already exist OR does not have a signature file 
         // then we just upload as usual.
-        public void UploadFile(string containerName, string blobName, string localFilePath)
+        public long UploadFile(string containerName, string blobName, string localFilePath)
         {
             // 1) Does remote blob exist?
             // 2) if so, download existing signature for blob.
@@ -52,10 +52,11 @@ namespace BlobSync
 
                 var blobSig = DownloadSignatureForBlob(containerName, blobName);
                 var searchResults = CommonOps.SearchLocalFileForSignatures(localFilePath, blobSig);
-                UploadDelta(localFilePath, searchResults, containerName, blobName);
+                var bytesUploaded = UploadDelta(localFilePath, searchResults, containerName, blobName);
                 var sig = CommonOps.CreateSignatureForLocalFile(localFilePath);
                 UploadSignatureForBlob(blobName, containerName, sig);
 
+                return bytesUploaded;
             }
             else
             {
@@ -78,6 +79,66 @@ namespace BlobSync
                 var sig = CommonOps.CreateSignatureForLocalFile(localFilePath);
                 UploadSignatureForBlob(blobName, containerName, sig);
 
+                return fileLength;
+            }
+        }
+
+
+        // updates blob if possible.
+        // if blob doesn't already exist OR does not have a signature file 
+        // then we just upload as usual.
+        public long CalculateDeltaSizeFromLocalSig(string localSigPath, string localFilePath)
+        {
+
+            using (var fs = new FileStream(localSigPath, FileMode.Open))
+            {
+                var sig = SerializationHelper.ReadSizeBasedBinarySignature(fs);
+                var searchResults = CommonOps.SearchLocalFileForSignatures(localFilePath, sig);
+
+                long total = 0;
+                foreach (var remainingBytes in searchResults.ByteRangesToUpload)
+                {
+                    total += (remainingBytes.EndOffset - remainingBytes.BeginOffset);
+
+                }
+
+                return total;
+            }
+        }
+
+        // updates blob if possible.
+        // if blob doesn't already exist OR does not have a signature file 
+        // then we just upload as usual.
+        public long CalculateDeltaSize(string containerName, string blobName, string localFilePath)
+        {
+            // 1) Does remote blob exist?
+            // 2) if so, download existing signature for blob.
+            if (AzureHelper.DoesBlobExist(containerName, blobName) && AzureHelper.DoesBlobSignatureExist(containerName, blobName))
+            {
+                // 3) If blob exists and have signature, then let the magic begin.
+                // 3.1) Download existing blob signature from Azure.
+                // 3.2) Search through local file for matches in existing blob signature.
+                // 3.3) Upload differences to Azure
+                // 3.4) Upload new signature.s
+
+                var blobSig = DownloadSignatureForBlob(containerName, blobName);
+                var searchResults = CommonOps.SearchLocalFileForSignatures(localFilePath, blobSig);
+
+                long total = 0;
+                foreach (var remainingBytes in searchResults.ByteRangesToUpload)
+                {
+                    total += (remainingBytes.EndOffset - remainingBytes.BeginOffset);
+                    
+                }
+
+                return total;
+
+            }
+            else
+            {
+                var fileLength = CommonOps.GetFileSize(localFilePath);
+
+                return fileLength - 1;
             }
         }
 
@@ -95,9 +156,11 @@ namespace BlobSync
         // Uploads differences between existing blob and updated local file.
         // Have local file to reference, the search results (indicating which parts need to be uploaded)
         // container and blob name.
-        private void UploadDelta(string localFilePath, SignatureSearchResult searchResults, string containerName, string blobName)
+        private long UploadDelta(string localFilePath, SignatureSearchResult searchResults, string containerName, string blobName)
         {
             var allUploadedBlocks = new List<UploadedBlock>();
+
+            long bytesUploaded = 0;
 
             // loop through each section of the search results.
             // create blob from each RemainingBytes instances.
@@ -106,6 +169,8 @@ namespace BlobSync
             {
                 var uploadedBlockList = UploadBytes(remainingBytes, localFilePath, containerName, blobName);
                 allUploadedBlocks.AddRange( uploadedBlockList);
+
+                bytesUploaded += (remainingBytes.EndOffset - remainingBytes.BeginOffset);
             }
 
             // once we're here we should have uploaded ALL new data to Azure Blob Storage.
@@ -121,6 +186,7 @@ namespace BlobSync
             var res = (from b in allUploadedBlocks orderby b.Offset ascending select b.BlockId);
             PutBlockList(res.ToArray(), containerName, blobName);
 
+            return bytesUploaded;
         }
 
         private List<UploadedBlock> UploadBytes(RemainingBytes remainingBytes, string localFilePath, string containerName, string blobName)
@@ -343,7 +409,7 @@ namespace BlobSync
 
         
         // download blob to stream
-        public void DownloadBlob(string containerName, string blobName, Stream stream)
+        public long DownloadBlob(string containerName, string blobName, Stream stream)
         {
             var client = AzureHelper.GetCloudBlobClient();
             var container = client.GetContainerReference(containerName);
@@ -351,12 +417,16 @@ namespace BlobSync
             var blobRef = client.GetBlobReferenceFromServer(new Uri(url));
 
             ReadBlockBlob(blobRef, stream);
-            
+
+            return stream.Length;
+
         }
 
 
-        public void DownloadBlob(string containerName, string blobName, string localFilePath)
+        public long DownloadBlob(string containerName, string blobName, string localFilePath)
         {
+            long bytesDownloaded = 0;
+
             if (CommonOps.DoesFileExist(localFilePath))
             {
                 // local file exists.
@@ -376,6 +446,11 @@ namespace BlobSync
 
                 RegenerateBlob(containerName, blobName, byteRangesToDownload, localFilePath, searchResults.SignaturesToReuse, blobSig);
                 
+                foreach(var byteRange in byteRangesToDownload)
+                {
+                    bytesDownloaded += byteRange.EndOffset - byteRange.BeginOffset;
+                }
+
             }
             else
             {
@@ -383,9 +458,11 @@ namespace BlobSync
                 // get stream to store.
                 using (var stream = CommonHelper.GetStream(localFilePath))
                 {
-                    DownloadBlob(containerName, blobName, stream);
+                    bytesDownloaded = DownloadBlob(containerName, blobName, stream);
                 }
             }
+
+            return bytesDownloaded;
         }
 
         // regenerate blob locally.
@@ -519,7 +596,16 @@ namespace BlobSync
                     EndOffset = blobSize -1
                 });
             }
-
+            else if (lastSig.Offset + lastSig.Size == blobSize && lastSig.Offset == 0)
+            {
+                // This means that the last sig is the entire blob (offset == 0 and offset + size == blob size). Remaining bytes is just entire blob.
+                // then just go from offset to blobSize
+                remainingBytesList.Add(new RemainingBytes()
+                {
+                    BeginOffset = lastSig.Offset,
+                    EndOffset = blobSize - 1
+                });
+            }
             return remainingBytesList;
         }
 

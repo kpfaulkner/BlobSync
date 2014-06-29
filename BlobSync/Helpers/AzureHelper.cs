@@ -200,7 +200,7 @@ namespace BlobSync.Helpers
             var client = AzureHelper.GetCloudBlobClient();
             var container = client.GetContainerReference(containerName);
             var blob = container.GetBlockBlobReference(blobName);
-
+            blob.FetchAttributes();
             var length = blob.Properties.Length;
             return length;
 

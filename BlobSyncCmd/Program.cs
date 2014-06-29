@@ -27,6 +27,19 @@ namespace BlobSyncCmd
 {
     class Program
     {
+        static void ShowExamples()
+        {
+            Console.WriteLine("blobsynccmd upload/download/estimate/estimatelocal/createsig <local file path> <container> <blobname>");
+            Console.WriteLine("\n\neg.");
+            Console.WriteLine("Upload a file to Azure Blob Storage: blobsynccmd upload c:\\temp\\myfile.txt mycontainer myblobname\n");
+            Console.WriteLine("Download a file from Azure Blob Storage: blobsynccmd download c:\\temp\\destinationfilename.txt mycontainer myblobname\n");
+            Console.WriteLine("Download a file from Azure Blob Storage: blobsynccmd download c:\\temp\\destinationfilename.txt mycontainer myblobname\n");
+            Console.WriteLine("Estimate bytes to upload to update a file: blobsynccmd estimate c:\\temp\\newfile.txt mycontainer existingblobname\n");
+            Console.WriteLine("Estimate bytes to upload based on a local signature: blobsynccmd estimatelocal c:\\temp\\newfile.txt c:\\temp\\sigforoldfile\n");
+            Console.WriteLine("Generate signature for local file: blobsynccmd createsig c:\\temp\\file.txt\n");
+        }
+
+
         static void Main(string[] args)
         {
             string command;
@@ -43,19 +56,42 @@ namespace BlobSyncCmd
                 switch (command)
                 {
                     case "upload":
-                        azureOps.UploadFile(containerName, blobName, fileName);
+                        var bytesUploaded = azureOps.UploadFile(containerName, blobName, fileName);
+                        Console.WriteLine("Uploaded {0} bytes", bytesUploaded);
                         break;
-
                     case "download":
-                        azureOps.DownloadBlob(containerName, blobName, fileName);
+                        var bytesDownloaded = azureOps.DownloadBlob(containerName, blobName, fileName);
+                        Console.WriteLine("Downloaded {0} bytes", bytesDownloaded);
                         break;
-
+                    case "estimate":
+                        var estimate = azureOps.CalculateDeltaSize(containerName, blobName, fileName);
+                        Console.WriteLine( string.Format("Estimate to upload {0} bytes", estimate));
+                        break;
                     default:
-                        Console.WriteLine("blobsynccmd upload/download/createsig <local file path> <container> <blobname>");
+                        ShowExamples();
                         break;
                 }
             }
+            else
+            if (args.Length == 3)
+            {
+                command = args[0];
+                fileName = args[1];
+                var localSigPath = args[2];
+                var azureOps = new AzureOps();
 
+                switch (command)
+                {
+                    case "estimatelocal":
+                        var estimatelocal = azureOps.CalculateDeltaSizeFromLocalSig(localSigPath, fileName);
+                        Console.WriteLine(string.Format("Estimate to upload {0} bytes", estimatelocal));
+                        break;
+                    default:
+                        ShowExamples();
+                        break;
+                }
+            }
+            else
             if (args.Length == 2)
             {
                 command = args[0];
@@ -74,14 +110,15 @@ namespace BlobSyncCmd
 
                         break;
                     default:
-                        Console.WriteLine("blobsynccmd upload/download/createsig <local file path> <container> <blobname>");
-                        break;
+                        ShowExamples();
+                          break;
                 }
                 
             }
             else
             {
-                Console.WriteLine("blobsynccmd upload/download/createsig <local file path> <container> <blobname>");
+                ShowExamples();
+
             }
 
 

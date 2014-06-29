@@ -1,4 +1,19 @@
-BlobSync:
+BlobSync Nuget:
+
+Rename the Dummy_App.config and add entries:
+
+<appSettings>
+    <add key="AzureAccountKey" value="Azure Account Key, please see the Azure Portal" />
+    <add key="AzureAccountName" value="Azure Account Name" />
+	<add key="SignatureSize" value="10000" />
+</appSettings>
+
+The assembly will then be ready to use. 
+
+
+=================================
+
+BlobSyncCmd:
 
 Quick use scenario.
 
