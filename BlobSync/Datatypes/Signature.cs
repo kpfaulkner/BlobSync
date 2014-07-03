@@ -64,6 +64,9 @@ namespace BlobSync.Datatypes
     {
         public string BlockId { get; set; }
         public long Offset { get; set; }
+        public BlockSignature Sig { get; set; }
+        public long Size { get; set; }
+        public bool IsNew { get; set; }
     }
 
     public class RemainingBytes

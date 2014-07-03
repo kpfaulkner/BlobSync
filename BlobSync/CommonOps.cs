@@ -114,8 +114,10 @@ namespace BlobSync
 
             // get sizes of signatures (block sizes) from existing sig.
             // then loop through all sizes looking for matches in local file.
+            // important to search from largest to smallest.
             var signatureSizes = sig.Signatures.Keys.ToList();
-            //signatureSizes.Sort();
+            signatureSizes.Sort();
+            signatureSizes.Reverse();
 
             // byte ranges that have not been matched to existing blocks yet.
             var remainingByteList = new List<RemainingBytes>();
@@ -359,5 +361,42 @@ namespace BlobSync
         }
 
 
+        /// <summary>
+        /// Existing blocks + sigs are in searchResults
+        /// new 
+        /// </summary>
+        /// <param name="bytesUploaded"></param>
+        /// <returns></returns>
+        internal static SizeBasedCompleteSignature CreateSignatureFromNewAndReusedBlocks(List<UploadedBlock> allBlocks)
+        {
+            var sigDict = new Dictionary<int, List<BlockSignature>>();
+
+            List<BlockSignature> sigList;
+
+            // new blocks
+            foreach (var newBlock in allBlocks )
+            {
+                if (!sigDict.TryGetValue((int)newBlock.Sig.Size, out sigList))
+                {
+                    sigList = new List<BlockSignature>();
+                    sigDict[(int) newBlock.Sig.Size] = sigList;
+                }
+
+                // add sig to the list.
+                sigList.Add( newBlock.Sig);
+            }
+
+            var sizedBaseSignature = new SizeBasedCompleteSignature();
+            sizedBaseSignature.Signatures = new Dictionary<int, CompleteSignature>();
+
+            foreach (var key in sigDict.Keys)
+            {
+                var compSig = new CompleteSignature() {SignatureList = sigDict[key].ToArray()};
+                sizedBaseSignature.Signatures[key] = compSig;
+
+            }
+
+            return sizedBaseSignature;
+        }
     }
 }

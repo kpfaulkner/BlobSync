@@ -52,9 +52,12 @@ namespace BlobSync
 
                 var blobSig = DownloadSignatureForBlob(containerName, blobName);
                 var searchResults = CommonOps.SearchLocalFileForSignatures(localFilePath, blobSig);
-                var bytesUploaded = UploadDelta(localFilePath, searchResults, containerName, blobName);
-                var sig = CommonOps.CreateSignatureForLocalFile(localFilePath);
+                var allBlocks = UploadDelta(localFilePath, searchResults, containerName, blobName);
+                var sig = CommonOps.CreateSignatureFromNewAndReusedBlocks(allBlocks);
+
                 UploadSignatureForBlob(blobName, containerName, sig);
+
+                long bytesUploaded = allBlocks.Where(b => b.IsNew).Select(b => b.Size).Sum();
 
                 return bytesUploaded;
             }
@@ -109,6 +112,27 @@ namespace BlobSync
         // updates blob if possible.
         // if blob doesn't already exist OR does not have a signature file 
         // then we just upload as usual.
+        public SizeBasedCompleteSignature GenerateDeltaSigFromLocalResources(string localSigPath, string localFilePath)
+        {
+
+            using (var fs = new FileStream(localSigPath, FileMode.Open))
+            {
+                var sig = SerializationHelper.ReadSizeBasedBinarySignature(fs);
+                var searchResults = CommonOps.SearchLocalFileForSignatures(localFilePath, sig);
+                var allBlocks = UploadDelta(localFilePath, searchResults, null, null, true);
+
+                var newSig = CommonOps.CreateSignatureFromNewAndReusedBlocks(allBlocks);
+                
+
+                return newSig;
+            }
+        }
+
+
+
+        // updates blob if possible.
+        // if blob doesn't already exist OR does not have a signature file 
+        // then we just upload as usual.
         public long CalculateDeltaSize(string containerName, string blobName, string localFilePath)
         {
             // 1) Does remote blob exist?
@@ -156,7 +180,7 @@ namespace BlobSync
         // Uploads differences between existing blob and updated local file.
         // Have local file to reference, the search results (indicating which parts need to be uploaded)
         // container and blob name.
-        private long UploadDelta(string localFilePath, SignatureSearchResult searchResults, string containerName, string blobName)
+        private List<UploadedBlock> UploadDelta(string localFilePath, SignatureSearchResult searchResults, string containerName, string blobName, bool testMode = false)
         {
             var allUploadedBlocks = new List<UploadedBlock>();
 
@@ -167,7 +191,7 @@ namespace BlobSync
             // reuse the blocks already in use.
             foreach (var remainingBytes in searchResults.ByteRangesToUpload)
             {
-                var uploadedBlockList = UploadBytes(remainingBytes, localFilePath, containerName, blobName);
+                var uploadedBlockList = UploadBytes(remainingBytes, localFilePath, containerName, blobName, testMode);
                 allUploadedBlocks.AddRange( uploadedBlockList);
 
                 bytesUploaded += (remainingBytes.EndOffset - remainingBytes.BeginOffset);
@@ -178,28 +202,39 @@ namespace BlobSync
             // loop through existing blocks and get offset + blockId's.
             foreach (var sig in searchResults.SignaturesToReuse)
             {
+                if (sig.MD5Signature == null)
+                {
+                    var error = "";
+                }
                 var blockId = Convert.ToBase64String(sig.MD5Signature);
-                allUploadedBlocks.Add(new UploadedBlock() {BlockId = blockId, Offset = sig.Offset});
+                allUploadedBlocks.Add(new UploadedBlock() {BlockId = blockId, Offset = sig.Offset, Size = sig.Size, Sig = sig, IsNew = false});
             }
 
-            // needs to be sorted by offset so the final blob constructed is in correct order.
-            var res = (from b in allUploadedBlocks orderby b.Offset ascending select b.BlockId);
-            PutBlockList(res.ToArray(), containerName, blobName);
+            if (!testMode)
+            {
+                // needs to be sorted by offset so the final blob constructed is in correct order.
+                var res = (from b in allUploadedBlocks orderby b.Offset ascending select b.BlockId);
+                PutBlockList(res.ToArray(), containerName, blobName);
+            }
 
-            return bytesUploaded;
+            return allUploadedBlocks;
         }
 
-        private List<UploadedBlock> UploadBytes(RemainingBytes remainingBytes, string localFilePath, string containerName, string blobName)
+        private List<UploadedBlock> UploadBytes(RemainingBytes remainingBytes, string localFilePath, string containerName, string blobName, bool testMode=false)
         {
             var uploadedBlockList = new List<UploadedBlock>();
 
             try
             {
-                var client = AzureHelper.GetCloudBlobClient();
-                var container = client.GetContainerReference(containerName);
-                container.CreateIfNotExists();
-                var blob = container.GetBlockBlobReference(blobName);
+                CloudBlockBlob blob = null;
+                if (!testMode)
+                {
+                    var client = AzureHelper.GetCloudBlobClient();
+                    var container = client.GetContainerReference(containerName);
+                    container.CreateIfNotExists();
+                    blob = container.GetBlockBlobReference(blobName);
 
+                }
                 var blockCount =
                     Math.Round((double) (remainingBytes.EndOffset - remainingBytes.BeginOffset + 1)/
                                (double) ConfigHelper.SignatureSize, MidpointRounding.AwayFromZero);
@@ -212,28 +247,39 @@ namespace BlobSync
                             ? ConfigHelper.SignatureSize
                             : remainingBytes.EndOffset - offset + 1;
 
+                        if (sizeToRead == 0)
+                        {
+                            var error = "";
+                        }
+
                         // seek to the offset we need. Dont forget remaining bytes may be bigger than the signature size
                         // we want to deal with.
                         stream.Seek(offset, SeekOrigin.Begin);
                         var bytesToRead = new byte[sizeToRead];
-                        stream.Read(bytesToRead, 0, (int) sizeToRead);
+                        var bytesRead = stream.Read(bytesToRead, 0, (int) sizeToRead);
 
                         var sig = CommonOps.GenerateBlockSig(bytesToRead, offset, (int) sizeToRead, 0);
                         var blockId = Convert.ToBase64String(sig.MD5Signature);
-                        
-                        // yes, putting into memory stream is probably a waste here.
-                        using (var ms = new MemoryStream(bytesToRead))
+
+                        if (!testMode)
                         {
-                            var options = new BlobRequestOptions() {ServerTimeout = new TimeSpan(0, 90, 0)};
-                            blob.PutBlock(blockId, ms,null,null, options);
-                           
+                            // yes, putting into memory stream is probably a waste here.
+                            using (var ms = new MemoryStream(bytesToRead))
+                            {
+                                var options = new BlobRequestOptions() { ServerTimeout = new TimeSpan(0, 90, 0) };
+                                blob.PutBlock(blockId, ms, null, null, options);
+
+                            }
                         }
 
                         // store the block id that is associated with this byte range.
                         uploadedBlockList.Add(new UploadedBlock()
                         {
                             BlockId = blockId,
-                            Offset = offset
+                            Offset = offset,
+                            Sig = sig,
+                            Size = bytesRead,
+                            IsNew = true
                         });
 
                         offset += sizeToRead;

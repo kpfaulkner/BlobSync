@@ -37,6 +37,7 @@ namespace BlobSyncCmd
             Console.WriteLine("Estimate bytes to upload to update a file: blobsynccmd estimate c:\\temp\\newfile.txt mycontainer existingblobname\n");
             Console.WriteLine("Estimate bytes to upload based on a local signature: blobsynccmd estimatelocal c:\\temp\\newfile.txt c:\\temp\\sigforoldfile\n");
             Console.WriteLine("Generate signature for local file: blobsynccmd createsig c:\\temp\\file.txt\n");
+            Console.WriteLine("Generate new signature based off existing (old) sig and new local file: blobsynccmd createdeltasig c:\\temp\\newfile.txt c:\\temp\\sigforoldfile\n");
         }
 
 
@@ -86,6 +87,16 @@ namespace BlobSyncCmd
                         var estimatelocal = azureOps.CalculateDeltaSizeFromLocalSig(localSigPath, fileName);
                         Console.WriteLine(string.Format("Estimate to upload {0} bytes", estimatelocal));
                         break;
+                    case "createdeltasig":
+                        var sig = azureOps.GenerateDeltaSigFromLocalResources(localSigPath, fileName);
+                        
+                        var sigFileName = fileName + ".sig";
+                        using (Stream s = new FileStream(sigFileName, FileMode.Create))
+                        {
+                            SerializationHelper.WriteBinarySizedBasedSignature(sig, s);
+                        }
+                        break;
+
                     default:
                         ShowExamples();
                         break;
