@@ -184,8 +184,6 @@ namespace BlobSync
         {
             var allUploadedBlocks = new List<UploadedBlock>();
 
-            long bytesUploaded = 0;
-
             // loop through each section of the search results.
             // create blob from each RemainingBytes instances.
             // reuse the blocks already in use.
@@ -193,8 +191,6 @@ namespace BlobSync
             {
                 var uploadedBlockList = UploadBytes(remainingBytes, localFilePath, containerName, blobName, testMode);
                 allUploadedBlocks.AddRange( uploadedBlockList);
-
-                bytesUploaded += (remainingBytes.EndOffset - remainingBytes.BeginOffset);
             }
 
             // once we're here we should have uploaded ALL new data to Azure Blob Storage.
@@ -369,9 +365,6 @@ namespace BlobSync
             }
 
         }
-
-
-
 
         // can make this concurrent... soonish. :)
         private void WriteBlockBlob(Stream stream, string blobName, CloudBlobContainer container, int parallelFactor = 1, int chunkSizeInMB = 2)
