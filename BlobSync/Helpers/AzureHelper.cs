@@ -92,9 +92,7 @@ namespace BlobSync.Helpers
                     // could do with a little work.
                     IRetryPolicy linearRetryPolicy = new LinearRetry(TimeSpan.FromSeconds(ConfigHelper.RetryAttemptDelayInSeconds), ConfigHelper.MaxRetryAttempts);
                     BlobClient.RetryPolicy = linearRetryPolicy;
-
                 }
-
             }
 
             return BlobClient;
@@ -107,7 +105,6 @@ namespace BlobSync.Helpers
             if (!string.IsNullOrEmpty(blobUrl))
             {
                 Uri url = new Uri(blobUrl);
-                var blobName = "";
                 account = url.Host.Split('.')[0];
             }
 
@@ -117,9 +114,7 @@ namespace BlobSync.Helpers
 
         internal static string GenerateUrl(string containerName, string blobName)
         {
-            var url = "https://" + ConfigHelper.AzureAccountName + "." + AzureBaseUrl + "/" + containerName + "/" + blobName;
-
-            return url;
+            return string.Format("https://{0}.{1}/{2}/{3}", ConfigHelper.AzureAccountName, AzureBaseUrl, containerName, blobName);
         }
 
         internal static string GetBlobNameFromFilePath(string localFilePath)

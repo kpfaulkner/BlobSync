@@ -216,7 +216,7 @@ namespace BlobSync
             return allUploadedBlocks;
         }
 
-        private List<UploadedBlock> UploadBytes(RemainingBytes remainingBytes, string localFilePath, string containerName, string blobName, bool testMode=false)
+        private List<UploadedBlock> UploadBytes(RemainingBytes remainingBytes, string localFilePath, string containerName, string blobName, bool testMode=false, int parallelUploadFactor = 2)
         {
             var uploadedBlockList = new List<UploadedBlock>();
 
@@ -234,6 +234,8 @@ namespace BlobSync
                 var blockCount =
                     Math.Round((double) (remainingBytes.EndOffset - remainingBytes.BeginOffset + 1)/
                                (double) ConfigHelper.SignatureSize, MidpointRounding.AwayFromZero);
+
+                var taskList = new List<Task>();
 
                 using (var stream = new FileStream(localFilePath, FileMode.Open))
                 {
@@ -254,29 +256,40 @@ namespace BlobSync
                         var bytesToRead = new byte[sizeToRead];
                         var bytesRead = stream.Read(bytesToRead, 0, (int) sizeToRead);
 
-                        var sig = CommonOps.GenerateBlockSig(bytesToRead, offset, (int) sizeToRead, 0);
-                        var blockId = Convert.ToBase64String(sig.MD5Signature);
-
-                        if (!testMode)
+                        var t = Task.Factory.StartNew(() =>
                         {
-                            // yes, putting into memory stream is probably a waste here.
-                            using (var ms = new MemoryStream(bytesToRead))
+                            var newBuffer = new byte[bytesRead];
+                            Array.Copy(bytesToRead, newBuffer, bytesRead);
+
+                            var sig = CommonOps.GenerateBlockSig(newBuffer, offset, (int)bytesRead, 0);
+                            var blockId = Convert.ToBase64String(sig.MD5Signature);
+
+                            if (!testMode)
                             {
-                                var options = new BlobRequestOptions() { ServerTimeout = new TimeSpan(0, 90, 0) };
-                                blob.PutBlock(blockId, ms, null, null, options);
+                                // yes, putting into memory stream is probably a waste here.
+                                using (var ms = new MemoryStream(newBuffer))
+                                {
+                                    var options = new BlobRequestOptions() { ServerTimeout = new TimeSpan(0, 90, 0) };
+                                    blob.PutBlock(blockId, ms, null, null, options);
+
+                                }
+
+                                // store the block id that is associated with this byte range.
+                                uploadedBlockList.Add(new UploadedBlock()
+                                {
+                                    BlockId = blockId,
+                                    Offset = offset,
+                                    Sig = sig,
+                                    Size = bytesRead,
+                                    IsNew = true
+                                });
+
 
                             }
-                        }
 
-                        // store the block id that is associated with this byte range.
-                        uploadedBlockList.Add(new UploadedBlock()
-                        {
-                            BlockId = blockId,
-                            Offset = offset,
-                            Sig = sig,
-                            Size = bytesRead,
-                            IsNew = true
                         });
+
+                        taskList.Add(t);
 
                         offset += sizeToRead;
 
