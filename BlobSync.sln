@@ -1,7 +1,7 @@
 ﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio 2013
-VisualStudioVersion = 12.0.21005.1
+VisualStudioVersion = 12.0.30516.0
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "BlobSync", "BlobSync\BlobSync.csproj", "{F67AB9C9-CD34-4153-B19C-B1803820FD1D}"
 EndProject
@@ -15,17 +15,27 @@ EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
+		Debug|x64 = Debug|x64
 		Release|Any CPU = Release|Any CPU
+		Release|x64 = Release|x64
 	EndGlobalSection
 	GlobalSection(ProjectConfigurationPlatforms) = postSolution
 		{F67AB9C9-CD34-4153-B19C-B1803820FD1D}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
 		{F67AB9C9-CD34-4153-B19C-B1803820FD1D}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{F67AB9C9-CD34-4153-B19C-B1803820FD1D}.Debug|x64.ActiveCfg = Debug|x64
+		{F67AB9C9-CD34-4153-B19C-B1803820FD1D}.Debug|x64.Build.0 = Debug|x64
 		{F67AB9C9-CD34-4153-B19C-B1803820FD1D}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{F67AB9C9-CD34-4153-B19C-B1803820FD1D}.Release|Any CPU.Build.0 = Release|Any CPU
+		{F67AB9C9-CD34-4153-B19C-B1803820FD1D}.Release|x64.ActiveCfg = Release|x64
+		{F67AB9C9-CD34-4153-B19C-B1803820FD1D}.Release|x64.Build.0 = Release|x64
 		{9D3567D4-A156-480E-A8A0-7D406BD69BE4}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
 		{9D3567D4-A156-480E-A8A0-7D406BD69BE4}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{9D3567D4-A156-480E-A8A0-7D406BD69BE4}.Debug|x64.ActiveCfg = Debug|x64
+		{9D3567D4-A156-480E-A8A0-7D406BD69BE4}.Debug|x64.Build.0 = Debug|x64
 		{9D3567D4-A156-480E-A8A0-7D406BD69BE4}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{9D3567D4-A156-480E-A8A0-7D406BD69BE4}.Release|Any CPU.Build.0 = Release|Any CPU
+		{9D3567D4-A156-480E-A8A0-7D406BD69BE4}.Release|x64.ActiveCfg = Release|x64
+		{9D3567D4-A156-480E-A8A0-7D406BD69BE4}.Release|x64.Build.0 = Release|x64
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

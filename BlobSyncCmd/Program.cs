@@ -22,6 +22,7 @@ using System.Text;
 using System.Threading.Tasks;
 using BlobSync;
 using BlobSync.Helpers;
+using System.Diagnostics;
 
 namespace BlobSyncCmd
 {
@@ -38,6 +39,8 @@ namespace BlobSyncCmd
             Console.WriteLine("Estimate bytes to upload based on a local signature: blobsynccmd estimatelocal c:\\temp\\newfile.txt c:\\temp\\sigforoldfile\n");
             Console.WriteLine("Generate signature for local file: blobsynccmd createsig c:\\temp\\file.txt\n");
             Console.WriteLine("Generate new signature based off existing (old) sig and new local file: blobsynccmd createdeltasig c:\\temp\\newfile.txt c:\\temp\\sigforoldfile\n");
+            Console.WriteLine("Show offset/size contents of signature: blobsynccmd showsig c:\\temp\\sigfile\n");
+
         }
 
 
@@ -45,6 +48,9 @@ namespace BlobSyncCmd
         {
             string command;
             string fileName;
+
+            var sw = new Stopwatch();
+            sw.Start();
 
             if (args.Length == 4)
             {
@@ -120,6 +126,21 @@ namespace BlobSyncCmd
                         }
 
                         break;
+                    case "showsig":
+                        using (var fs = new FileStream(fileName, FileMode.Open))
+                        {
+                            var loadedSig = SerializationHelper.ReadSizeBasedBinarySignature(fs);
+                            
+                            foreach( var sigSize in loadedSig.Signatures)
+                            {
+                                foreach( var s in sigSize.Value.SignatureList.OrderBy( s => s.Offset))
+                                {
+                                    Console.WriteLine(string.Format("{0}:{1}", s.Offset, s.Size));
+
+                                }
+                            }
+                        }
+                        break;
                     default:
                         ShowExamples();
                           break;
@@ -132,7 +153,11 @@ namespace BlobSyncCmd
 
             }
 
+            sw.Stop();
+            Console.WriteLine("Took {0}s", (double)sw.ElapsedMilliseconds / 1000.0);
 
         }
+
+       
     }
 }

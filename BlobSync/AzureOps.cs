@@ -216,7 +216,7 @@ namespace BlobSync
             return allUploadedBlocks;
         }
 
-        private List<UploadedBlock> UploadBytes(RemainingBytes remainingBytes, string localFilePath, string containerName, string blobName, bool testMode=false, int parallelUploadFactor = 2)
+        private List<UploadedBlock> UploadBytes(RemainingBytes remainingBytes, string localFilePath, string containerName, string blobName, bool testMode=false, int parallelFactor = 2)
         {
             var uploadedBlockList = new List<UploadedBlock>();
 
@@ -237,65 +237,77 @@ namespace BlobSync
 
                 var taskList = new List<Task>();
 
+                long offset = remainingBytes.BeginOffset;
+                    
                 using (var stream = new FileStream(localFilePath, FileMode.Open))
                 {
-                    for (var offset = remainingBytes.BeginOffset; offset <= remainingBytes.EndOffset;)
+                    while (offset <= remainingBytes.EndOffset)
                     {
-                        var sizeToRead = offset + ConfigHelper.SignatureSize <= remainingBytes.EndOffset
-                            ? ConfigHelper.SignatureSize
-                            : remainingBytes.EndOffset - offset + 1;
-
-                        if (sizeToRead == 0)
+                        while (offset <= remainingBytes.EndOffset && taskList.Count < parallelFactor)
                         {
-                            var error = "";
-                        }
+                            var sizeToRead = offset + ConfigHelper.SignatureSize <= remainingBytes.EndOffset
+                                ? ConfigHelper.SignatureSize
+                                : remainingBytes.EndOffset - offset + 1;
 
-                        // seek to the offset we need. Dont forget remaining bytes may be bigger than the signature size
-                        // we want to deal with.
-                        stream.Seek(offset, SeekOrigin.Begin);
-                        var bytesToRead = new byte[sizeToRead];
-                        var bytesRead = stream.Read(bytesToRead, 0, (int) sizeToRead);
-
-                        var t = Task.Factory.StartNew(() =>
-                        {
-                            var newBuffer = new byte[bytesRead];
-                            Array.Copy(bytesToRead, newBuffer, bytesRead);
-
-                            var sig = CommonOps.GenerateBlockSig(newBuffer, offset, (int)bytesRead, 0);
-                            var blockId = Convert.ToBase64String(sig.MD5Signature);
-
-                            if (!testMode)
+                            if (sizeToRead == 0)
                             {
-                                // yes, putting into memory stream is probably a waste here.
-                                using (var ms = new MemoryStream(newBuffer))
-                                {
-                                    var options = new BlobRequestOptions() { ServerTimeout = new TimeSpan(0, 90, 0) };
-                                    blob.PutBlock(blockId, ms, null, null, options);
-
-                                }
-
-                                // store the block id that is associated with this byte range.
-                                uploadedBlockList.Add(new UploadedBlock()
-                                {
-                                    BlockId = blockId,
-                                    Offset = offset,
-                                    Sig = sig,
-                                    Size = bytesRead,
-                                    IsNew = true
-                                });
-
-
+                                var error = "";
                             }
 
-                        });
+                            // seek to the offset we need. Dont forget remaining bytes may be bigger than the signature size
+                            // we want to deal with.
+                            //stream.Seek(offset, SeekOrigin.Begin);
+                            //var bytesToRead = new byte[sizeToRead];
+                            //var bytesRead = stream.Read(bytesToRead, 0, (int)sizeToRead);
+                            var localOffset = offset;
+                            var t = Task.Factory.StartNew(() => WriteBytes(stream, localOffset, sizeToRead, taskList, testMode, blob, uploadedBlockList));
 
-                        taskList.Add(t);
 
-                        offset += sizeToRead;
+                            //{
+                            //    var localOffset = offset;
+                            //    var newBuffer = new byte[bytesRead];
+                            //    Array.Copy(bytesToRead, newBuffer, bytesRead);
+
+                            //    var sig = CommonOps.GenerateBlockSig(newBuffer, localOffset, (int)bytesRead, 0);
+                            //    var blockId = Convert.ToBase64String(sig.MD5Signature);
+
+                            //    if (!testMode)
+                            //    {
+                            //        // yes, putting into memory stream is probably a waste here.
+                            //        using (var ms = new MemoryStream(newBuffer))
+                            //        {
+                            //            var options = new BlobRequestOptions() { ServerTimeout = new TimeSpan(0, 90, 0) };
+                            //            blob.PutBlock(blockId, ms, null, null, options);
+
+                            //        }
+                            //    }
+                            //    // store the block id that is associated with this byte range.
+                            //    uploadedBlockList.Add(new UploadedBlock()
+                            //    {
+                            //        BlockId = blockId,
+                            //        Offset = localOffset,
+                            //        Sig = sig,
+                            //        Size = bytesRead,
+                            //        IsNew = true
+                            //    });
+
+                            //});
+
+                            taskList.Add(t);
+
+                            offset += sizeToRead;
+
+                        }
+
+                        // wait until we've all uploaded.
+                        var waitedIndex = Task.WaitAny(taskList.ToArray());
+                        taskList.RemoveAt(waitedIndex);
 
                     }
+
+                    // wait on remaining tasks.
+                    Task.WaitAll(taskList.ToArray());
                 }
-                
             }
             catch (ArgumentException ex)
             {
@@ -308,6 +320,36 @@ namespace BlobSync
             }
 
             return uploadedBlockList;
+        }
+
+        private void WriteBytes(FileStream stream, long offset, long sizeToRead, List<Task> taskList, bool testMode, CloudBlockBlob blob, List<UploadedBlock> uploadedBlockList)
+        {
+            stream.Seek(offset, SeekOrigin.Begin);
+            var bytesToRead = new byte[sizeToRead];
+            var bytesRead = stream.Read(bytesToRead, 0, (int)sizeToRead);
+
+            var sig = CommonOps.GenerateBlockSig(bytesToRead, offset, (int)bytesRead, 0);
+            var blockId = Convert.ToBase64String(sig.MD5Signature);
+
+            if (!testMode)
+            {
+                // yes, putting into memory stream is probably a waste here.
+                using (var ms = new MemoryStream(bytesToRead))
+                {
+                    var options = new BlobRequestOptions() { ServerTimeout = new TimeSpan(0, 90, 0) };
+                    blob.PutBlock(blockId, ms, null, null, options);
+
+                }
+            }
+            // store the block id that is associated with this byte range.
+            uploadedBlockList.Add(new UploadedBlock()
+            {
+                BlockId = blockId,
+                Offset = offset,
+                Sig = sig,
+                Size = bytesRead,
+                IsNew = true
+            });
         }
 
 
