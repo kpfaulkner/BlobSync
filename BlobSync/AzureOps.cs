@@ -174,6 +174,10 @@ namespace BlobSync
 
             var blobIdList = blob.DownloadBlockList(BlockListingFilter.Committed);
             var overlap = (from b in blobIdList where blockIdArray.Contains(b.Name) select b).ToList();
+            foreach (var i in blockIdArray)
+            {
+                Console.WriteLine(i);
+            }
             blob.PutBlockList(blockIdArray);
         }
 
@@ -216,7 +220,88 @@ namespace BlobSync
             return allUploadedBlocks;
         }
 
-        private List<UploadedBlock> UploadBytes(RemainingBytes remainingBytes, string localFilePath, string containerName, string blobName, bool testMode=false, int parallelFactor = 2)
+        private List<UploadedBlock> UploadBytes(RemainingBytes remainingBytes, string localFilePath, string containerName, string blobName, bool testMode = false)
+        {
+            var uploadedBlockList = new List<UploadedBlock>();
+
+            try
+            {
+                CloudBlockBlob blob = null;
+                if (!testMode)
+                {
+                    var client = AzureHelper.GetCloudBlobClient();
+                    var container = client.GetContainerReference(containerName);
+                    container.CreateIfNotExists();
+                    blob = container.GetBlockBlobReference(blobName);
+
+                }
+                var blockCount =
+                    Math.Round((double)(remainingBytes.EndOffset - remainingBytes.BeginOffset + 1) /
+                               (double)ConfigHelper.SignatureSize, MidpointRounding.AwayFromZero);
+
+                using (var stream = new FileStream(localFilePath, FileMode.Open))
+                {
+                    for (var offset = remainingBytes.BeginOffset; offset <= remainingBytes.EndOffset; )
+                    {
+                        var sizeToRead = offset + ConfigHelper.SignatureSize <= remainingBytes.EndOffset
+                            ? ConfigHelper.SignatureSize
+                            : remainingBytes.EndOffset - offset + 1;
+
+                        if (sizeToRead == 0)
+                        {
+                            var error = "";
+                        }
+
+                        // seek to the offset we need. Dont forget remaining bytes may be bigger than the signature size
+                        // we want to deal with.
+                        stream.Seek(offset, SeekOrigin.Begin);
+                        var bytesToRead = new byte[sizeToRead];
+                        var bytesRead = stream.Read(bytesToRead, 0, (int)sizeToRead);
+
+                        var sig = CommonOps.GenerateBlockSig(bytesToRead, offset, (int)sizeToRead, 0);
+                        var blockId = Convert.ToBase64String(sig.MD5Signature);
+
+                        if (!testMode)
+                        {
+                            // yes, putting into memory stream is probably a waste here.
+                            using (var ms = new MemoryStream(bytesToRead))
+                            {
+                                var options = new BlobRequestOptions() { ServerTimeout = new TimeSpan(0, 90, 0) };
+                                blob.PutBlock(blockId, ms, null, null, options);
+
+                            }
+                        }
+
+                        // store the block id that is associated with this byte range.
+                        uploadedBlockList.Add(new UploadedBlock()
+                        {
+                            BlockId = blockId,
+                            Offset = offset,
+                            Sig = sig,
+                            Size = bytesRead,
+                            IsNew = true
+                        });
+
+                        offset += sizeToRead;
+
+                    }
+                }
+
+            }
+            catch (ArgumentException ex)
+            {
+                // probably bad container.
+                Console.WriteLine("Argument Exception " + ex.ToString());
+            }
+            finally
+            {
+
+            }
+
+            return uploadedBlockList;
+        }
+
+        private List<UploadedBlock> UploadBytesParallel(RemainingBytes remainingBytes, string localFilePath, string containerName, string blobName, bool testMode=false, int parallelFactor = 2)
         {
             var uploadedBlockList = new List<UploadedBlock>();
 
