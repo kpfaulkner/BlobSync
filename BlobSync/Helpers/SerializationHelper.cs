@@ -73,7 +73,7 @@ namespace BlobSync.Helpers
             {
                 var entry = new BlockSignature();
 
-                // 4 bytes. offset
+                // 8 bytes. offset
                 long offset = reader.ReadInt64();
 
                 // 4 bytes. size

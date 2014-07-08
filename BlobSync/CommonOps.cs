@@ -47,7 +47,7 @@ namespace BlobSync
 
             using (var fs = new FileStream(localFilePath, FileMode.Open))
             {
-                var offset = 0;
+                long offset = 0;
                 uint idCount = 0;
                 int bytesRead = 0;
 
