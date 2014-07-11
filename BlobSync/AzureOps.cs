@@ -40,6 +40,12 @@ namespace BlobSync
         // then we just upload as usual.
         public long UploadFile(string containerName, string blobName, string localFilePath)
         {
+            var fileLength = CommonOps.GetFileSize(localFilePath);
+
+            // not used here but is cached for later.
+            // WORK IN PROGRESS DONT ERASE THIS LINE.
+            //ConfigHelper.GetSignatureSize(fileLength, true);
+
             // 1) Does remote blob exist?
             // 2) if so, download existing signature for blob.
             if (AzureHelper.DoesBlobExist(containerName, blobName) && AzureHelper.DoesBlobSignatureExist(containerName, blobName))
@@ -65,8 +71,6 @@ namespace BlobSync
             {
                 // 4) If blob or signature does NOT exist, just upload as normal. No tricky stuff to do here.
                 // 4.1) Generate signature and upload it.
-
-                var fileLength = CommonOps.GetFileSize(localFilePath);
 
                 var remainingBytes = new RemainingBytes()
                 {

@@ -35,6 +35,9 @@ namespace BlobSync.Helpers
         public static string AzureAccountName { get; set; }
 
         public static int SignatureSize { get; set; }
+        public static int MinimumSignatureSize { get; set; }
+        public static int InitialNumberOfBlocks { get; set; }
+
     
         public static string IsDev { get; set; }
 
@@ -90,14 +93,21 @@ namespace BlobSync.Helpers
         {
             AzureAccountKey = GetConfigValue<string>("AzureAccountKey", "");
             AzureAccountName = GetConfigValue<string>("AzureAccountName", "");
-            SignatureSize = GetConfigValue<int>("SignatureSize", 4210688);
+
+            MinimumSignatureSize = GetConfigValue<int>("MinimumSignatureSize", 50000);
+
+            InitialNumberOfBlocks = GetConfigValue<int>("InitialNumberOfBlocks", 10000);
+
+            // if Signature size is > 0 then use it.
+            // otherwise calculate it based on MinimumSignatureSize and InitialNumberOfBlocks
+            SignatureSize = GetConfigValue<int>("SignatureSize", 0);
+
             IsDev = GetConfigValue<string>("IsDev", "");
            
             // retry policies.
             // can be used in both Azure and AWS (eventually).
             RetryAttemptDelayInSeconds = GetConfigValue<int>("RetryAttemptDelayInSeconds", 2);
             MaxRetryAttempts = GetConfigValue<int>("MaxRetryAttempts", 10);
-
 
             DownloadDirectory = GetConfigValue<string>("DownloadDirectory", "c:\\temp");
             Verbose = GetConfigValue<bool>("Verbose", false);
@@ -110,6 +120,50 @@ namespace BlobSync.Helpers
 
             // SAS timeout
             SharedAccessSignatureDurationInSeconds = GetConfigValue<int>("SharedAccessSignatureDurationInSeconds", 600);
+        }
+
+        /// <summary>
+        /// Could just make this a getter... but needs fileSize param to make the best calculation
+        /// This is WORK IN PROGRESS!!!
+        /// </summary>
+        /// <param name="fileSize"></param>
+        /// <returns></returns>
+        public static int GetSignatureSize( long fileSize, bool refresh = false)
+        {
+            if (SignatureSize > 0 && !refresh)
+            {
+                return SignatureSize;
+            }
+
+            var numberOfBlocks = InitialNumberOfBlocks;
+            var sigSize = fileSize / numberOfBlocks;
+
+            // contained in if conditions since I dont want sigSize to be reduced then increased afterwards.
+            if (sigSize < MinimumSignatureSize)
+            {
+                while (sigSize < MinimumSignatureSize )
+                {
+                    numberOfBlocks--;
+                    sigSize = fileSize / numberOfBlocks;
+                }
+
+            }
+            else if (sigSize > MinimumSignatureSize)
+            {
+                while (sigSize > MinimumSignatureSize )
+                {
+                    numberOfBlocks++;
+                    sigSize = fileSize / numberOfBlocks;
+                }
+            }
+
+
+            // for caching purposes.
+            // sigs can be 4M max.
+            SignatureSize = (int)Math.Min(4000000, sigSize); ;
+
+            return SignatureSize;
+
         }
 
         public static void SaveConfig()

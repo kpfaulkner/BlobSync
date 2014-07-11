@@ -103,6 +103,9 @@ namespace BlobSync
             // length of file.
             var tempFile = File.Open(localFilePath, FileMode.Open);
             var fileLength = tempFile.Length;
+
+
+
             tempFile.Close();
 
             var offset = 0;
