@@ -137,7 +137,7 @@ namespace BlobSync
         {
             // 1) Does remote blob exist?
             // 2) if so, download existing signature for blob.
-            if (AzureHelper.DoesBlobExist(containerName, blobName) && AzureHelper.DoesBlobSignatureExist(containerName, blobName))
+            if ( !string.IsNullOrEmpty( blobName) && !string.IsNullOrEmpty( containerName) && AzureHelper.DoesBlobExist(containerName, blobName) && AzureHelper.DoesBlobSignatureExist(containerName, blobName))
             {
                 // 3) If blob exists and have signature, then let the magic begin.
                 // 3.1) Download existing blob signature from Azure.
@@ -162,7 +162,18 @@ namespace BlobSync
             {
                 var fileLength = CommonOps.GetFileSize(localFilePath);
 
-                return fileLength - 1;
+                var remainingBytes = new RemainingBytes()
+                {
+                    BeginOffset = 0,
+                    EndOffset = fileLength - 1
+                };
+
+                // upload all bytes of new file. UploadBytes method will break into appropriate sized blocks.
+                var allUploadedBlocks = UploadBytes(remainingBytes, localFilePath, containerName, blobName, true);
+
+                var sizeUploaded = allUploadedBlocks.Where(b => !b.IsDuplicate).Sum(b => b.Size);
+
+                return sizeUploaded;
             }
         }
 
@@ -260,15 +271,25 @@ namespace BlobSync
 
                         var sig = CommonOps.GenerateBlockSig(bytesToRead, offset, (int)sizeToRead, 0);
                         var blockId = Convert.ToBase64String(sig.MD5Signature);
+                        var isDupe = false;
 
+                        isDupe = uploadedBlockList.Any(ub => ub.BlockId == blockId);
+                        
                         if (!testMode)
                         {
-                            // yes, putting into memory stream is probably a waste here.
-                            using (var ms = new MemoryStream(bytesToRead))
-                            {
-                                var options = new BlobRequestOptions() { ServerTimeout = new TimeSpan(0, 90, 0) };
-                                blob.PutBlock(blockId, ms, null, null, options);
+                            // only upload bytes IF another block hasn't already covered it.
+                            // unlikely situation I think, but possibly going to happen for 
+                            // VM images etc where there is lots of "blank space".
 
+                            if (!isDupe)
+                            {
+                                // yes, putting into memory stream is probably a waste here.
+                                using (var ms = new MemoryStream(bytesToRead))
+                                {
+                                    var options = new BlobRequestOptions() { ServerTimeout = new TimeSpan(0, 90, 0) };
+                                    blob.PutBlock(blockId, ms, null, null, options);
+
+                                }
                             }
                         }
 
@@ -279,7 +300,8 @@ namespace BlobSync
                             Offset = offset,
                             Sig = sig,
                             Size = bytesRead,
-                            IsNew = true
+                            IsNew = true,
+                            IsDuplicate = isDupe
                         });
 
                         offset += sizeToRead;

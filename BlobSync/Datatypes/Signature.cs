@@ -67,6 +67,8 @@ namespace BlobSync.Datatypes
         public BlockSignature Sig { get; set; }
         public long Size { get; set; }
         public bool IsNew { get; set; }
+
+        public bool IsDuplicate { get; set; }
     }
 
     public class RemainingBytes
