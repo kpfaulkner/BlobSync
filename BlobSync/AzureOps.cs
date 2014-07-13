@@ -29,6 +29,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 using Microsoft.WindowsAzure.Storage;
+using System.Collections.Concurrent;
 
 namespace BlobSync
 {
@@ -78,8 +79,7 @@ namespace BlobSync
                     EndOffset = fileLength - 1
                 };
 
-                // upload all bytes of new file. UploadBytes method will break into appropriate sized blocks.
-                var allUploadedBlocks = UploadBytes(remainingBytes, localFilePath, containerName, blobName);
+                var allUploadedBlocks = UploadBytesParallel(remainingBytes, localFilePath, containerName, blobName);
                 var res = (from b in allUploadedBlocks orderby b.Offset ascending select b.BlockId);
                 PutBlockList(res.ToArray(), containerName, blobName);
                 
@@ -189,10 +189,6 @@ namespace BlobSync
 
             var blobIdList = blob.DownloadBlockList(BlockListingFilter.Committed);
             var overlap = (from b in blobIdList where blockIdArray.Contains(b.Name) select b).ToList();
-            foreach (var i in blockIdArray)
-            {
-                Console.WriteLine(i);
-            }
             blob.PutBlockList(blockIdArray);
         }
 
@@ -208,7 +204,7 @@ namespace BlobSync
             // reuse the blocks already in use.
             foreach (var remainingBytes in searchResults.ByteRangesToUpload)
             {
-                var uploadedBlockList = UploadBytes(remainingBytes, localFilePath, containerName, blobName, testMode);
+                var uploadedBlockList = UploadBytesParallel(remainingBytes, localFilePath, containerName, blobName, testMode);
                 allUploadedBlocks.AddRange( uploadedBlockList);
             }
 
@@ -275,9 +271,7 @@ namespace BlobSync
 
                         var sig = CommonOps.GenerateBlockSig(bytesToRead, offset, (int)sizeToRead, 0);
                         var blockId = Convert.ToBase64String(sig.MD5Signature);
-                        var isDupe = false;
-
-                        isDupe = uploadedBlockList.Any(ub => ub.BlockId == blockId);
+                        var isDupe = uploadedBlockList.Any(ub => ub.BlockId == blockId);
                         
                         if (!testMode)
                         {
@@ -329,8 +323,7 @@ namespace BlobSync
 
         private List<UploadedBlock> UploadBytesParallel(RemainingBytes remainingBytes, string localFilePath, string containerName, string blobName, bool testMode=false, int parallelFactor = 2)
         {
-            var uploadedBlockList = new List<UploadedBlock>();
-
+            var uploadedBlockList = new ConcurrentBag<UploadedBlock>();
             try
             {
                 CloudBlockBlob blob = null;
@@ -367,42 +360,11 @@ namespace BlobSync
 
                             // seek to the offset we need. Dont forget remaining bytes may be bigger than the signature size
                             // we want to deal with.
-                            //stream.Seek(offset, SeekOrigin.Begin);
-                            //var bytesToRead = new byte[sizeToRead];
-                            //var bytesRead = stream.Read(bytesToRead, 0, (int)sizeToRead);
-                            var localOffset = offset;
-                            var t = Task.Factory.StartNew(() => WriteBytes(stream, localOffset, sizeToRead, taskList, testMode, blob, uploadedBlockList));
+                            stream.Seek(offset, SeekOrigin.Begin);
+                            var bytesToRead = new byte[sizeToRead];
+                            var bytesRead = stream.Read(bytesToRead, 0, (int)sizeToRead);
 
-
-                            //{
-                            //    var localOffset = offset;
-                            //    var newBuffer = new byte[bytesRead];
-                            //    Array.Copy(bytesToRead, newBuffer, bytesRead);
-
-                            //    var sig = CommonOps.GenerateBlockSig(newBuffer, localOffset, (int)bytesRead, 0);
-                            //    var blockId = Convert.ToBase64String(sig.MD5Signature);
-
-                            //    if (!testMode)
-                            //    {
-                            //        // yes, putting into memory stream is probably a waste here.
-                            //        using (var ms = new MemoryStream(newBuffer))
-                            //        {
-                            //            var options = new BlobRequestOptions() { ServerTimeout = new TimeSpan(0, 90, 0) };
-                            //            blob.PutBlock(blockId, ms, null, null, options);
-
-                            //        }
-                            //    }
-                            //    // store the block id that is associated with this byte range.
-                            //    uploadedBlockList.Add(new UploadedBlock()
-                            //    {
-                            //        BlockId = blockId,
-                            //        Offset = localOffset,
-                            //        Sig = sig,
-                            //        Size = bytesRead,
-                            //        IsNew = true
-                            //    });
-
-                            //});
+                            var t = WriteBytes(offset, bytesRead, bytesToRead,blob, uploadedBlockList, testMode );
 
                             taskList.Add(t);
 
@@ -430,7 +392,57 @@ namespace BlobSync
 
             }
 
-            return uploadedBlockList;
+            return uploadedBlockList.ToList();
+            //return uploadedBlockList;
+        }
+
+        /// <summary>
+        /// Yes, copying the byte array to here. But given we'll not have many of these tasks going to parallel
+        /// and each byte array is AT MOST 4M, I think I can live with the memory overhead.
+        /// </summary>
+        /// <param name="offset"></param>
+        /// <param name="bytesRead"></param>
+        /// <param name="bytesToRead"></param>
+        /// <param name="blob"></param>
+        /// <param name="uploadedBlockList"></param>
+        /// <param name="testMode"></param>
+        /// <returns></returns>
+        private Task WriteBytes(long offset, int bytesRead, byte[] bytesToRead, CloudBlockBlob blob, ConcurrentBag<UploadedBlock> uploadedBlockList, bool testMode)
+        {
+
+            var t = Task.Factory.StartNew(() =>
+                {
+                    var sig = CommonOps.GenerateBlockSig(bytesToRead, offset, (int)bytesRead, 0);
+                    var blockId = Convert.ToBase64String(sig.MD5Signature);
+                  
+                    var isDupe = uploadedBlockList.Any(ub => ub.BlockId == blockId);
+
+                    if (!testMode)
+                    {
+                        if (!isDupe)
+                        {
+                            // yes, putting into memory stream is probably a waste here.
+                            using (var ms = new MemoryStream(bytesToRead))
+                            {
+                                var options = new BlobRequestOptions() { ServerTimeout = new TimeSpan(0, 90, 0) };
+                                blob.PutBlock(blockId, ms, null, null, options);
+
+                            }
+                        }
+                    }
+                    // store the block id that is associated with this byte range.
+                    uploadedBlockList.Add(new UploadedBlock()
+                    {
+                        BlockId = blockId,
+                        Offset = offset,
+                        Sig = sig,
+                        Size = bytesRead,
+                        IsNew = true,
+                        IsDuplicate = isDupe
+                    });
+                });
+
+            return t;
         }
 
         private void WriteBytes(FileStream stream, long offset, long sizeToRead, List<Task> taskList, bool testMode, CloudBlockBlob blob, List<UploadedBlock> uploadedBlockList)
@@ -497,122 +509,6 @@ namespace BlobSync
             }
         }
 
-        public void UploadBlockBlob(string localFilePath, string containerName, string blobName)
-        {
-            Stream stream = null;
-
-            try
-            {
-                var client = AzureHelper.GetCloudBlobClient();
-
-                
-                var container = client.GetContainerReference(containerName);
-                container.CreateIfNotExists();
-
-                stream = new FileStream(localFilePath, FileMode.Open);
-                
-                // assuming block blobs for now.
-                WriteBlockBlob(stream, blobName, container);
-                
-
-            }
-            catch (ArgumentException ex)
-            {
-                // probably bad container.
-                Console.WriteLine("Argument Exception " + ex.ToString());
-            }
-            finally
-            {
-                if (stream != null)
-                {
-                    stream.Close();
-                }
-
-            }
-
-        }
-
-        // can make this concurrent... soonish. :)
-        private void WriteBlockBlob(Stream stream, string blobName, CloudBlobContainer container, int parallelFactor = 1, int chunkSizeInMB = 2)
-        {
-            var blobRef = container.GetBlockBlobReference(blobName);
-            blobRef.DeleteIfExists();
-
-            // use "parallel" option even if parallelfactor == 1.
-            // This is because I've found that blobRef.UploadFromStream to be unreliable.
-            // Unsure if its a timeout issue or some other cause. (huge stacktrace/exception thrown from within
-            // the client lib code.
-            if (parallelFactor > 0)
-            {
-                ParallelWriteBlockBlob(stream, blobRef, parallelFactor, chunkSizeInMB);
-            }
-            else
-            {
-                blobRef.UploadFromStream(stream);
-            }
-        }
-
-        // NOTE: need to check if we need to modify  blob.ServiceClient.ParallelOperationThreadCount
-        private void ParallelWriteBlockBlob(Stream stream, CloudBlockBlob blob, int parallelFactor, int chunkSizeInMB)
-        {
-            int chunkSize = chunkSizeInMB * 1024 * 1024;
-            var length = stream.Length;
-            var numberOfBlocks = (length / chunkSize) + 1;
-            var blockIdList = new string[numberOfBlocks];
-            var chunkSizeList = new int[numberOfBlocks];
-            var taskList = new List<Task>();
-
-            var count = numberOfBlocks - 1;
-
-            // read the data...  spawn a task to launch... then wait for all.
-            while (count >= 0)
-            {
-                while (count >= 0 && taskList.Count < parallelFactor)
-                {
-                    var index = (numberOfBlocks - count - 1);
-
-                    var chunkSizeToUpload = (int)Math.Min(chunkSize, length - (index * chunkSize));
-                    chunkSizeList[index] = chunkSizeToUpload;
-                    var dataBuffer = new byte[chunkSizeToUpload];
-                    stream.Seek(index * chunkSize, SeekOrigin.Begin);
-                    stream.Read(dataBuffer, 0, chunkSizeToUpload);
-
-                    var t = Task.Factory.StartNew(() =>
-                    {
-                        var tempCount = index;
-                        var uploadSize = chunkSizeList[tempCount];
-
-                        var newBuffer = new byte[uploadSize];
-                        Array.Copy(dataBuffer, newBuffer, dataBuffer.Length);
-
-                        var blockId = Convert.ToBase64String(Guid.NewGuid().ToByteArray());
-
-                        using (var memStream = new MemoryStream(newBuffer, 0, uploadSize))
-                        {
-                            blob.PutBlock(blockId, memStream, null);
-                        }
-                        blockIdList[tempCount] = blockId;
-
-                    });
-
-                    taskList.Add(t);
-                    count--;
-
-
-                }
-
-                var waitedIndex = Task.WaitAny(taskList.ToArray());
-                taskList.RemoveAt(waitedIndex);
-            }
-
-
-            Task.WaitAll(taskList.ToArray());
-
-            blob.PutBlockList(blockIdList);
-        }
-
-
-        
         // download blob to stream
         public long DownloadBlob(string containerName, string blobName, Stream stream)
         {

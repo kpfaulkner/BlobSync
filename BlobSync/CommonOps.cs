@@ -308,7 +308,7 @@ namespace BlobSync
         internal static BlockSignature GenerateBlockSig(byte[] buffer, long offset, int blockSize, uint id)
         {
             var sig = new BlockSignature();
-
+            
             var rollingSig = CreateRollingSignature(buffer, blockSize);
             var md5Sig = CreateMD5Signature(buffer, blockSize);
             sig.RollingSig = rollingSig;
@@ -321,6 +321,8 @@ namespace BlobSync
         }
         internal static byte[] CreateMD5Signature(byte[] byteBlock, int length)
         {
+            var md5Hash = MD5.Create();
+
             var res = md5Hash.ComputeHash(byteBlock, 0, length);
             return res;
         }
