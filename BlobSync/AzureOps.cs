@@ -80,6 +80,7 @@ namespace BlobSync
                 };
 
                 var allUploadedBlocks = UploadBytesParallel(remainingBytes, localFilePath, containerName, blobName);
+                // var allUploadedBlocks = UploadBytes(remainingBytes, localFilePath, containerName, blobName);
                 var res = (from b in allUploadedBlocks orderby b.Offset ascending select b.BlockId);
                 PutBlockList(res.ToArray(), containerName, blobName);
                 
@@ -105,7 +106,7 @@ namespace BlobSync
                 long total = 0;
                 foreach (var remainingBytes in searchResults.ByteRangesToUpload)
                 {
-                    total += (remainingBytes.EndOffset - remainingBytes.BeginOffset);
+                    total += (remainingBytes.EndOffset - remainingBytes.BeginOffset +1);
 
                 }
 
@@ -205,7 +206,8 @@ namespace BlobSync
             foreach (var remainingBytes in searchResults.ByteRangesToUpload)
             {
                 var uploadedBlockList = UploadBytesParallel(remainingBytes, localFilePath, containerName, blobName, testMode);
-                allUploadedBlocks.AddRange( uploadedBlockList);
+                //var uploadedBlockList = UploadBytes(remainingBytes, localFilePath, containerName, blobName, testMode);
+                allUploadedBlocks.AddRange(uploadedBlockList);
             }
 
             // once we're here we should have uploaded ALL new data to Azure Blob Storage.
@@ -663,50 +665,32 @@ namespace BlobSync
 
             var sortedSigs = (from sig in sigsToReuseList orderby sig.Offset ascending select sig).ToList();
 
+            long startOffsetToCopy = 0;
 
             // loop through all cloudBlobSigs.
             // If have a match in sigsToReuse, skip it.
             // otherwise, take note of offset and size to download.
-
-            var count = 0;
-            while (count < allBlobSigs.Count - 1)
+            foreach( var sig in allBlobSigs)
             {
-                // sig and next sig.
-                var sig1 = allBlobSigs[count];
-                var sig2 = allBlobSigs[count + 1];
-
-                // check if sig is already in local file.
-                var haveMatchingSig = sigsToReuseList.Any(s => s.MD5Signature == sig1.MD5Signature);
+                var haveMatchingSig = sigsToReuseList.Any(s => s.MD5Signature.SequenceEqual(sig.MD5Signature));
                 if (!haveMatchingSig)
                 {
+                    // if no match then we need to copy everything from startOffsetToCopy to sig.Offset + sig.Size
                     remainingBytesList.Add(new RemainingBytes()
-                       {
-                           BeginOffset = sig1.Offset,
-                           EndOffset = sig2.Offset - 1
-                       });
+                    {
+                        BeginOffset = startOffsetToCopy,
+                        EndOffset = sig.Offset + sig.Size -1
+                    });
+                    startOffsetToCopy = sig.Offset + sig.Size;
                 }
-                count++;
+                else
+                {
+                    // we have a match therefore dont need to copy the data.
+                    // change startOffsetToCopy to just after current sig.
+                    startOffsetToCopy = sig.Offset + sig.Size;
+                }
             }
 
-            var lastSig = allBlobSigs.Last();
-            if (lastSig.Offset + lastSig.Size < blobSize)
-            {
-                remainingBytesList.Add(new RemainingBytes()
-                {
-                    BeginOffset = lastSig.Offset + lastSig.Size,
-                    EndOffset = blobSize -1
-                });
-            }
-            else if (lastSig.Offset + lastSig.Size == blobSize && lastSig.Offset == 0)
-            {
-                // This means that the last sig is the entire blob (offset == 0 and offset + size == blob size). Remaining bytes is just entire blob.
-                // then just go from offset to blobSize
-                remainingBytesList.Add(new RemainingBytes()
-                {
-                    BeginOffset = lastSig.Offset,
-                    EndOffset = blobSize - 1
-                });
-            }
             return remainingBytesList;
         }
 
@@ -729,5 +713,19 @@ namespace BlobSync
 
         }
 
+
+        public void GetBlockListInfo(string containerName, string blobName)
+        {
+            var client = AzureHelper.GetCloudBlobClient();
+            var container = client.GetContainerReference(containerName);
+            var blob = container.GetBlockBlobReference(blobName);
+
+            var blobIdList = blob.DownloadBlockList(BlockListingFilter.Committed);
+            var all = blob.DownloadBlockList(BlockListingFilter.All).ToList();
+            foreach( var i in all)
+            {
+                Console.WriteLine(string.Format("{0}:{1}:{2}", i.Name, i.Length, i.Committed));
+            }
+        }
     }
 }

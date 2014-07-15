@@ -102,6 +102,10 @@ namespace BlobSyncCmd
                             SerializationHelper.WriteBinarySizedBasedSignature(sig, s);
                         }
                         break;
+                    case "showblocklist":
+
+                        azureOps.GetBlockListInfo(args[1], args[2]);
+                        break;
 
                     default:
                         ShowExamples();
@@ -141,6 +145,7 @@ namespace BlobSyncCmd
                             }
                         }
                         break;
+                   
                     default:
                         ShowExamples();
                           break;

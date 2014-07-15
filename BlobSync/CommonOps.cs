@@ -104,8 +104,6 @@ namespace BlobSync
             var tempFile = File.Open(localFilePath, FileMode.Open);
             var fileLength = tempFile.Length;
 
-
-
             tempFile.Close();
 
             var offset = 0;
@@ -131,7 +129,9 @@ namespace BlobSync
             {
                 using (var accessor = mmf.CreateViewAccessor())
                 {
-                    // loop through each sig size.
+                    // Any sigs smaller than 100 bytes? skip? 
+                    // Valid?
+                    // Really want to avoid searching for single bytes everywhere.
                     foreach (var sigSize in signatureSizes)
                     {
                         var sigs = sig.Signatures[sigSize];
@@ -155,99 +155,128 @@ namespace BlobSync
             var offset = 0L;
             foreach (var byteRange in remainingByteList)
             {
-                // if byteRange is smaller than the key we're using, then there cannot be a match so add
-                // it to the newRemainingBytes list
-                if (byteRange.EndOffset - byteRange.BeginOffset + 1 >= windowSize)
+
+                var byteRangeSize = byteRange.EndOffset - byteRange.BeginOffset + 1;
+                
+                // if byte range is large... and signature size is small (what values???) then dont check.
+                // We could end up with LOADS of tiny sig matching where ideally we'd use a larger new sig block.
+                // The exception is when the sig size exactly matches the byterange size... then we allow it to check if the sig will match
+                // in practice this allows small (1-2 byte sigs) to match the byte ranges.
+                if (byteRangeSize > 1000 && sigSize > 100 || byteRangeSize == sigSize)
                 {
-                    var byteRangeSize = byteRange.EndOffset - byteRange.BeginOffset + 1;
-                    // search this byterange for all possible keys.
-                    offset = byteRange.BeginOffset;
-                    var generateFreshSig = true;
-                    var bytesRead = 0L;
-                    RollingSignature? currentSig = null;
-                    long oldEndOffset = byteRange.BeginOffset;
-
-                    do
+                    // if byteRange is smaller than the key we're using, then there cannot be a match so add
+                    // it to the newRemainingBytes list
+                    if (byteRange.EndOffset - byteRange.BeginOffset + 1 >= windowSize)
                     {
-                        if (generateFreshSig)
+                        // search this byterange for all possible keys.
+                        offset = byteRange.BeginOffset;
+                        var generateFreshSig = true;
+                        var bytesRead = 0L;
+                        RollingSignature? currentSig = null;
+                        long oldEndOffset = byteRange.BeginOffset;
+                        long oldFinalOffset = 0;
+
+                        do
                         {
-                            bytesRead = accessor.ReadArray(offset, buffer, 0, windowSize);
-                            currentSig = CreateRollingSignature(buffer, (int)bytesRead);
-
-                        }
-                        else
-                        {
-                            // roll existing sig.
-                            var previousByte = accessor.ReadByte(offset - 1);
-                            var nextByte = accessor.ReadByte(offset + windowSize - 1);  // Need bounds checking?
-                            currentSig = RollSignature(windowSize, previousByte, nextByte, currentSig.Value);
-                        }
-
-                        if (sigDict.ContainsKey(currentSig.Value))
-                        {
-                            // populate buffer. Potential waste of IO here.
-                            bytesRead = accessor.ReadArray(offset, buffer, 0, windowSize);
-
-                            // check md5 sig.
-                            var md5Sig = CreateMD5Signature(buffer, (int) bytesRead);
-                            var sigsForCurrentRollingSig = sigDict[currentSig.Value];
-
-                            // have a matching md5? If so, we have a match.
-                            var matchingSigs =
-                                sigsForCurrentRollingSig.Where(s => s.MD5Signature.SequenceEqual(md5Sig))
-                                    .Select(n => n)
-                                    .ToList();
-
-                            if (matchingSigs.Any())
+                            if (generateFreshSig)
                             {
-                                // need to add any byte ranges between oldEndOffset and offset as bytes remaining (ie not part of any sig).
-                                if (oldEndOffset != offset)
-                                {
-                                    newRemainingBytes.Add(new RemainingBytes()
-                                    {
-                                        BeginOffset = oldEndOffset,
-                                        EndOffset = offset - 1
-                                    });
-                                    
-                                }
+                                bytesRead = accessor.ReadArray(offset, buffer, 0, windowSize);
+                                currentSig = CreateRollingSignature(buffer, (int)bytesRead);
 
-                                var matchingSig = matchingSigs[0];
-
-                                // when storing which existing sig to use, make sure we know the offset in the NEW file it should appear.
-                                matchingSig.Offset = offset;
-                                signaturesToReuse.Add(matchingSig);
-                                offset += windowSize;
-                                generateFreshSig = true;
-                                oldEndOffset = offset;
                             }
                             else
                             {
+                                // roll existing sig.
+                                var previousByte = accessor.ReadByte(offset - 1);
+                                var nextByte = accessor.ReadByte(offset + windowSize - 1);  // Need bounds checking?
+                                currentSig = RollSignature(windowSize, previousByte, nextByte, currentSig.Value);
+                            }
+
+                            if (sigDict.ContainsKey(currentSig.Value))
+                            {
+                                // populate buffer. Potential waste of IO here.
+                                bytesRead = accessor.ReadArray(offset, buffer, 0, windowSize);
+
+                                // check md5 sig.
+                                var md5Sig = CreateMD5Signature(buffer, (int)bytesRead);
+                                var sigsForCurrentRollingSig = sigDict[currentSig.Value];
+
+                                // have a matching md5? If so, we have a match.
+                                var matchingSigs =
+                                    sigsForCurrentRollingSig.Where(s => s.MD5Signature.SequenceEqual(md5Sig))
+                                        .Select(n => n)
+                                        .ToList();
+
+                                if (matchingSigs.Any())
+                                {
+                                    // need to add any byte ranges between oldEndOffset and offset as bytes remaining (ie not part of any sig).
+                                    // This is for catching any bytes BEFORE the sig match we've just found.
+                                    if (oldEndOffset != offset)
+                                    {
+                                        newRemainingBytes.Add(new RemainingBytes()
+                                        {
+                                            BeginOffset = oldEndOffset,
+                                            EndOffset = offset - 1
+                                        });
+                                    }
+
+                                    var matchingSig = matchingSigs[0];
+
+                                    // when storing which existing sig to use, make sure we know the offset in the NEW file it should appear.
+                                    matchingSig.Offset = offset;
+                                    signaturesToReuse.Add(matchingSig);
+                                    offset += windowSize;
+                                    generateFreshSig = true;
+                                    oldEndOffset = offset;
+                                }
+                                else
+                                {
+                                    offset++;
+                                    generateFreshSig = false;
+                                }
+                            }
+                            else
+                            {
+                                // no match. Just increment offset and generate rolling sig.
                                 offset++;
                                 generateFreshSig = false;
                             }
-                        }
-                        else
-                        {
-                            // no match. Just increment offset and generate rolling sig.
-                            offset++;
-                            generateFreshSig = false;
-                        }
-                    } while (offset + windowSize < byteRangeSize);
+                        } while (offset + windowSize <= byteRange.EndOffset + 1);   // FIXME: Crazy wrong... needs to check against endoffset, no?
 
-                    // add remaining bytes to newRemainingBytes list
-                    if (offset < byteRange.EndOffset)
-                    {
-                        newRemainingBytes.Add(new RemainingBytes()
+                        // add remaining bytes to newRemainingBytes list
+                        // Possible to have single byte at end with offset at very last byte.
+                        //if (oldEndOffset <= byteRange.EndOffset)
+                        //{
+                        //    newRemainingBytes.Add(new RemainingBytes()
+                        //    {
+                        //        BeginOffset = oldEndOffset,
+                        //        EndOffset = byteRange.EndOffset
+                        //    });
+                        //}
+
+                        // add remaining bytes to newRemainingBytes list
+                        // Possible to have single byte at end with offset at very last byte.
+                        if (offset <= byteRange.EndOffset)
                         {
-                            BeginOffset = oldEndOffset,
-                            EndOffset = byteRange.EndOffset
-                        });
+                            newRemainingBytes.Add(new RemainingBytes()
+                            {
+                                BeginOffset = oldEndOffset,
+                                EndOffset = byteRange.EndOffset
+                            });
+
+                        }
+                        // if last sig
+                    }
+                    else
+                    {
+                        newRemainingBytes.Add(byteRange);
                     }
                 }
                 else
                 {
                     newRemainingBytes.Add(byteRange);
                 }
+
             }
 
             return newRemainingBytes;

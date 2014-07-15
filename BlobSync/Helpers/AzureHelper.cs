@@ -86,6 +86,9 @@ namespace BlobSync.Helpers
 
                     var credentials = new Microsoft.WindowsAzure.Storage.Auth.StorageCredentials(accountName, accountKey);
                     CloudStorageAccount azureStorageAccount = new CloudStorageAccount(credentials, true);
+
+                    //var azureStorageAccount = CloudStorageAccount.DevelopmentStorageAccount;
+
                     BlobClient = azureStorageAccount.CreateCloudBlobClient();
 
                     // retry policy.
