@@ -36,6 +36,9 @@ namespace BlobSync
     public class AzureOps : ICloudOps
     {
         
+        // ugly lock.
+        static object parallelLock = new object();
+
         // updates blob if possible.
         // if blob doesn't already exist OR does not have a signature file 
         // then we just upload as usual.
@@ -46,7 +49,7 @@ namespace BlobSync
             // not used here but is cached for later.
             // WORK IN PROGRESS DONT ERASE THIS LINE.
             //ConfigHelper.GetSignatureSize(fileLength, true);
-
+            
             // 1) Does remote blob exist?
             // 2) if so, download existing signature for blob.
             if (AzureHelper.DoesBlobExist(containerName, blobName) && AzureHelper.DoesBlobSignatureExist(containerName, blobName))
@@ -81,6 +84,7 @@ namespace BlobSync
 
                 var allUploadedBlocks = UploadBytesParallel(remainingBytes, localFilePath, containerName, blobName);
                 // var allUploadedBlocks = UploadBytes(remainingBytes, localFilePath, containerName, blobName);
+               
                 var res = (from b in allUploadedBlocks orderby b.Offset ascending select b.BlockId);
                 PutBlockList(res.ToArray(), containerName, blobName);
                 
@@ -89,6 +93,28 @@ namespace BlobSync
 
                 return fileLength;
             }
+        }
+
+        private void FilterUploadedBlocks(List<UploadedBlock> allUploadedBlocks)
+        {
+            var blockDict = new Dictionary<long, UploadedBlock>();
+            var newList = new List<UploadedBlock>();
+
+            foreach( var block in allUploadedBlocks)
+            {
+                if (blockDict.ContainsKey( block.Offset))
+                {
+                    // error. this should not happen.
+
+                }
+                else
+                {
+                    newList.Add(block);
+                }
+            }
+
+            allUploadedBlocks.Clear();
+            allUploadedBlocks.AddRange(newList);
         }
 
 
@@ -288,7 +314,6 @@ namespace BlobSync
                                 {
                                     var options = new BlobRequestOptions() { ServerTimeout = new TimeSpan(0, 90, 0) };
                                     blob.PutBlock(blockId, ms, null, null, options);
-
                                 }
                             }
                         }
@@ -355,23 +380,21 @@ namespace BlobSync
                                 ? ConfigHelper.SignatureSize
                                 : remainingBytes.EndOffset - offset + 1;
 
-                            if (sizeToRead == 0)
+
+                            if (sizeToRead > 0)
                             {
-                                var error = "";
+                                // seek to the offset we need. Dont forget remaining bytes may be bigger than the signature size
+                                // we want to deal with.
+                                stream.Seek(offset, SeekOrigin.Begin);
+                                var bytesToRead = new byte[sizeToRead];
+                                var bytesRead = stream.Read(bytesToRead, 0, (int)sizeToRead);
+
+                                var t = WriteBytes(offset, bytesRead, bytesToRead, blob, uploadedBlockList, testMode);
+
+                                taskList.Add(t);
+
+                                offset += sizeToRead;
                             }
-
-                            // seek to the offset we need. Dont forget remaining bytes may be bigger than the signature size
-                            // we want to deal with.
-                            stream.Seek(offset, SeekOrigin.Begin);
-                            var bytesToRead = new byte[sizeToRead];
-                            var bytesRead = stream.Read(bytesToRead, 0, (int)sizeToRead);
-
-                            var t = WriteBytes(offset, bytesRead, bytesToRead,blob, uploadedBlockList, testMode );
-
-                            taskList.Add(t);
-
-                            offset += sizeToRead;
-
                         }
 
                         // wait until we've all uploaded.
@@ -416,8 +439,25 @@ namespace BlobSync
                 {
                     var sig = CommonOps.GenerateBlockSig(bytesToRead, offset, (int)bytesRead, 0);
                     var blockId = Convert.ToBase64String(sig.MD5Signature);
-                  
-                    var isDupe = uploadedBlockList.Any(ub => ub.BlockId == blockId);
+
+                    bool isDupe = false;
+                    lock (parallelLock)
+                    {
+
+                        isDupe = uploadedBlockList.Any(ub => ub.BlockId == blockId);
+
+                        // store the block id that is associated with this byte range.
+                        uploadedBlockList.Add(new UploadedBlock()
+                        {
+                            BlockId = blockId,
+                            Offset = offset,
+                            Sig = sig,
+                            Size = bytesRead,
+                            IsNew = true,
+                            IsDuplicate = isDupe
+                        });
+
+                    }
 
                     if (!testMode)
                     {
@@ -432,49 +472,9 @@ namespace BlobSync
                             }
                         }
                     }
-                    // store the block id that is associated with this byte range.
-                    uploadedBlockList.Add(new UploadedBlock()
-                    {
-                        BlockId = blockId,
-                        Offset = offset,
-                        Sig = sig,
-                        Size = bytesRead,
-                        IsNew = true,
-                        IsDuplicate = isDupe
-                    });
-                });
+              });
 
             return t;
-        }
-
-        private void WriteBytes(FileStream stream, long offset, long sizeToRead, List<Task> taskList, bool testMode, CloudBlockBlob blob, List<UploadedBlock> uploadedBlockList)
-        {
-            stream.Seek(offset, SeekOrigin.Begin);
-            var bytesToRead = new byte[sizeToRead];
-            var bytesRead = stream.Read(bytesToRead, 0, (int)sizeToRead);
-
-            var sig = CommonOps.GenerateBlockSig(bytesToRead, offset, (int)bytesRead, 0);
-            var blockId = Convert.ToBase64String(sig.MD5Signature);
-
-            if (!testMode)
-            {
-                // yes, putting into memory stream is probably a waste here.
-                using (var ms = new MemoryStream(bytesToRead))
-                {
-                    var options = new BlobRequestOptions() { ServerTimeout = new TimeSpan(0, 90, 0) };
-                    blob.PutBlock(blockId, ms, null, null, options);
-
-                }
-            }
-            // store the block id that is associated with this byte range.
-            uploadedBlockList.Add(new UploadedBlock()
-            {
-                BlockId = blockId,
-                Offset = offset,
-                Sig = sig,
-                Size = bytesRead,
-                IsNew = true
-            });
         }
 
 
@@ -701,18 +701,6 @@ namespace BlobSync
             // no parallel yet.
             blockBlob.DownloadToStream(stream);
         }
-
-        private void ReadBlockBlob(ICloudBlob blobRef, string fileName)
-        {            
-      
-            // get stream to store.
-            using (var stream = CommonHelper.GetStream(fileName))
-            {
-                ReadBlockBlob( blobRef, stream);
-            }
-
-        }
-
 
         public void GetBlockListInfo(string containerName, string blobName)
         {
