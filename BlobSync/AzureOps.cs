@@ -241,12 +241,11 @@ namespace BlobSync
             // loop through existing blocks and get offset + blockId's.
             foreach (var sig in searchResults.SignaturesToReuse)
             {
-                if (sig.MD5Signature == null)
+                if (sig.MD5Signature != null)
                 {
-                    var error = "";
+                    var blockId = Convert.ToBase64String(sig.MD5Signature);
+                    allUploadedBlocks.Add(new UploadedBlock() { BlockId = blockId, Offset = sig.Offset, Size = sig.Size, Sig = sig, IsNew = false });
                 }
-                var blockId = Convert.ToBase64String(sig.MD5Signature);
-                allUploadedBlocks.Add(new UploadedBlock() {BlockId = blockId, Offset = sig.Offset, Size = sig.Size, Sig = sig, IsNew = false});
             }
 
             if (!testMode)
