@@ -52,9 +52,7 @@ namespace BlobSync.Helpers
             try
             {
                 var client = GetCloudBlobClient();
-
                 var url = GenerateUrl(container, blobName);
-
                 var blob = client.GetBlobReferenceFromServer(new Uri(url));
 
                 if (blob != null)
@@ -74,10 +72,8 @@ namespace BlobSync.Helpers
             {
                 if (IsDevUrl())
                 {
-
                     CloudStorageAccount storageAccount = CloudStorageAccount.DevelopmentStorageAccount;
                     BlobClient = storageAccount.CreateCloudBlobClient();
-
                 }
                 else
                 {
@@ -86,9 +82,6 @@ namespace BlobSync.Helpers
 
                     var credentials = new Microsoft.WindowsAzure.Storage.Auth.StorageCredentials(accountName, accountKey);
                     CloudStorageAccount azureStorageAccount = new CloudStorageAccount(credentials, true);
-
-                    //var azureStorageAccount = CloudStorageAccount.DevelopmentStorageAccount;
-
                     BlobClient = azureStorageAccount.CreateCloudBlobClient();
 
                     // retry policy.
