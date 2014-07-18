@@ -95,6 +95,10 @@ namespace BlobSync
             }
         }
 
+        /// <summary>
+        /// Not currently used but DONT DELETE YET!!
+        /// </summary>
+        /// <param name="allUploadedBlocks"></param>
         private void FilterUploadedBlocks(List<UploadedBlock> allUploadedBlocks)
         {
             var blockDict = new Dictionary<long, UploadedBlock>();
@@ -182,8 +186,7 @@ namespace BlobSync
                 long total = 0;
                 foreach (var remainingBytes in searchResults.ByteRangesToUpload)
                 {
-                    total += (remainingBytes.EndOffset - remainingBytes.BeginOffset);
-                    
+                    total += (remainingBytes.EndOffset - remainingBytes.BeginOffset);      
                 }
 
                 return total;

@@ -174,8 +174,6 @@ namespace BlobSync
                         var bytesRead = 0L;
                         RollingSignature? currentSig = null;
                         long oldEndOffset = byteRange.BeginOffset;
-                        long oldFinalOffset = 0;
-
                         do
                         {
                             if (generateFreshSig)
@@ -241,18 +239,7 @@ namespace BlobSync
                                 offset++;
                                 generateFreshSig = false;
                             }
-                        } while (offset + windowSize <= byteRange.EndOffset + 1);   // FIXME: Crazy wrong... needs to check against endoffset, no?
-
-                        // add remaining bytes to newRemainingBytes list
-                        // Possible to have single byte at end with offset at very last byte.
-                        //if (oldEndOffset <= byteRange.EndOffset)
-                        //{
-                        //    newRemainingBytes.Add(new RemainingBytes()
-                        //    {
-                        //        BeginOffset = oldEndOffset,
-                        //        EndOffset = byteRange.EndOffset
-                        //    });
-                        //}
+                        } while (offset + windowSize <= byteRange.EndOffset + 1);  
 
                         // add remaining bytes to newRemainingBytes list
                         // Possible to have single byte at end with offset at very last byte.
