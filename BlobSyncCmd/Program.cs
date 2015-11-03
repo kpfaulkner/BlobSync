@@ -40,6 +40,10 @@ namespace BlobSyncCmd
             Console.WriteLine("Generate signature for local file: blobsynccmd createsig c:\\temp\\file.txt\n");
             Console.WriteLine("Generate new signature based off existing (old) sig and new local file: blobsynccmd createdeltasig c:\\temp\\newfile.txt c:\\temp\\sigforoldfile\n");
             Console.WriteLine("Show offset/size contents of signature: blobsynccmd showsig c:\\temp\\sigfile\n");
+            Console.WriteLine("Defrag Blob: blobsynccmd defrag mycontainer myblob\n");
+            Console.WriteLine("Defrag Blob Estimate: blobsynccmd defraglocal c:\\temp\\mysigfile\n");
+
+
 
         }
 
@@ -79,8 +83,7 @@ namespace BlobSyncCmd
                         break;
                 }
             }
-            else
-            if (args.Length == 3)
+            else if (args.Length == 3)
             {
                 command = args[0];
                 fileName = args[1];
@@ -106,6 +109,10 @@ namespace BlobSyncCmd
 
                         azureOps.GetBlockListInfo(args[1], args[2]);
                         break;
+                    case "defrag":
+                        azureOps.DefragBlob(args[1], args[2]);
+                        break;
+                        
 
                     default:
                         ShowExamples();
@@ -117,7 +124,7 @@ namespace BlobSyncCmd
             {
                 command = args[0];
                 fileName = args[1];
-
+                var azureOps = new AzureOps();
                 switch (command)
                 {
                     case "createsig":
@@ -145,7 +152,9 @@ namespace BlobSyncCmd
                             }
                         }
                         break;
-                   
+                    case "defraglocal":
+                        azureOps.DefragBlob(args[1]);
+                        break;
                     default:
                         ShowExamples();
                           break;

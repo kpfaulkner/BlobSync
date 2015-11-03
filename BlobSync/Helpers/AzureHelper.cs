@@ -110,7 +110,15 @@ namespace BlobSync.Helpers
 
         internal static string GenerateUrl(string containerName, string blobName)
         {
-            return string.Format("https://{0}.{1}/{2}/{3}", ConfigHelper.AzureAccountName, AzureBaseUrl, containerName, blobName);
+            if ( IsDevUrl())
+            {
+                return string.Format("http://127.0.0.1:10000/devstoreaccount1/{0}/{1}", containerName, blobName);
+
+            }
+            else
+            {
+                return string.Format("https://{0}.{1}/{2}/{3}", ConfigHelper.AzureAccountName, AzureBaseUrl, containerName, blobName);
+            }
         }
 
         internal static string GetBlobNameFromFilePath(string localFilePath)

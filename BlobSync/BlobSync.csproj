@@ -86,6 +86,7 @@
     <Compile Include="AzureOps.cs" />
     <Compile Include="CommonOps.cs" />
     <Compile Include="Datatypes\Blob.cs" />
+    <Compile Include="Datatypes\DefragNode.cs" />
     <Compile Include="Datatypes\Signature.cs" />
     <Compile Include="Datatypes\SignatureSearchResult.cs" />
     <Compile Include="Helpers\AzureHelper.cs" />

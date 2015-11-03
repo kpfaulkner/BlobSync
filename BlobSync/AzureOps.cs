@@ -717,5 +717,102 @@ namespace BlobSync
                 Console.WriteLine(string.Format("{0}:{1}:{2}", i.Name, i.Length, i.Committed));
             }
         }
+
+        /// <summary>
+        /// Merge smaller blocks into something at least fragmentMergeSize bytes long.
+        /// Only upload at most maxUploadLimit (0 == no limit).
+        /// Should this be in CommonOps?
+        /// Lame... really? DEFRAG? Then again I suppose the term IS appropriate.
+        /// </summary>
+        /// <param name="containerName"></param>
+        /// <param name="blobName"></param>
+        public void DefragBlob(string containerName, string blobName, long maxUploadLimitMB = 2)
+        {
+            var blobSig = DownloadSignatureForBlob(containerName, blobName);
+            DefragBlob(blobSig, maxUploadLimitMB);
+        }
+
+        /// <summary>
+        /// Merge smaller blocks into something at least fragmentMergeSize bytes long.
+        /// Only upload at most maxUploadLimit (0 == no limit).
+        /// Should this be in CommonOps?
+        /// Lame... really? DEFRAG? Then again I suppose the term IS appropriate.
+        /// </summary>
+        /// <param name="containerName"></param>
+        /// <param name="blobName"></param>
+        public void DefragBlob(string filePath, long maxUploadLimitMB = 2)
+        {
+            using (var fs = new FileStream(filePath, FileMode.Open))
+            {
+                var blobSig = SerializationHelper.ReadSizeBasedBinarySignature(fs);
+                DefragBlob(blobSig, maxUploadLimitMB);               
+            }
+        }
+
+        /// <summary>
+        /// Merge smaller blocks into something at least fragmentMergeSize bytes long.
+        /// Only upload at most maxUploadLimit (0 == no limit).
+        /// Should this be in CommonOps?
+        /// Lame... really? DEFRAG? Then again I suppose the term IS appropriate.
+        /// </summary>
+        /// <param name="containerName"></param>
+        /// <param name="blobName"></param>
+        public void DefragBlob(SizeBasedCompleteSignature blobSig, long maxUploadLimitMB = 2)
+        {
+            var allBlobSigs = blobSig.Signatures.Values.SelectMany(x => x.SignatureList).OrderBy(a => a.Offset).ToList();
+
+            var targetSigSize = ConfigHelper.SignatureSize;
+
+            // loop through sigs, merge what we can but dont exceed maxUploadLimit
+            long bytesToUpload = 0;
+            var byteRangesToUpload = new List<RemainingBytes>();
+            var defragNodeList = new List<DefragNode>();
+            for (var i = 0; i < allBlobSigs.Count; i++)
+            {
+                uint sigSize = 0;
+                var j = i;
+
+                while (j < allBlobSigs.Count)
+                {
+                    var sig = allBlobSigs[j];
+                    j++;
+
+                    // break if we get too big.
+                    if (sigSize + sig.Size > targetSigSize)
+                    {
+                        break;
+                    }
+
+                    sigSize += sig.Size;
+
+                }
+
+                defragNodeList.Add(new DefragNode { Offset = allBlobSigs[i].Offset, Size = sigSize, SigPos = i, NoSigs = j - i - 1 });
+            }
+
+            // defragNodeList is a list of sigs, and size. These ones will be merged.
+            var sortedList = defragNodeList.OrderByDescending(n => n.NoSigs).ToList();
+
+
+            // the entries in defragNodeList that has the max number of sigs in it (ie most fragmentation) will be the ones to get merged.
+            foreach( var sig in sortedList)
+            {
+                DefragSigGroup(blobSig, sig);
+                bytesToUpload += sig.Size;
+
+                if (bytesToUpload > maxUploadLimitMB)
+                {
+                    break;
+                }
+            }
+
+
+        }
+
+        // defrags a group of sigs... merges them together.
+        private void DefragSigGroup(SizeBasedCompleteSignature blobSig, DefragNode sig)
+        {
+            
+        }
     }
 }
