@@ -53,6 +53,8 @@ namespace BlobSyncCmd
             string command;
             string fileName;
 
+            int parallelFactor = ConfigHelper.ParallelFactor;
+
             var sw = new Stopwatch();
             sw.Start();
 
@@ -67,7 +69,7 @@ namespace BlobSyncCmd
                 switch (command)
                 {
                     case "upload":
-                        var bytesUploaded = azureOps.UploadFile(containerName, blobName, fileName);
+                        var bytesUploaded = azureOps.UploadFile(containerName, blobName, fileName, parallelFactor);
                         Console.WriteLine("Uploaded {0} bytes", bytesUploaded);
                         break;
                     case "download":

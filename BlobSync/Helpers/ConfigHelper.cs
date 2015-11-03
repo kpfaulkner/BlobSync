@@ -115,7 +115,7 @@ namespace BlobSync.Helpers
             UseBlobCopy = GetConfigValue<bool>("UseBlobCopy", false);
             ListContainer = GetConfigValue<bool>("ListContainer", false);
             MonitorBlobCopy = GetConfigValue<bool>("MonitorBlobCopy", false);
-            ParallelFactor = GetConfigValue<int>("ParallelFactor", 1);
+            ParallelFactor = GetConfigValue<int>("ParallelFactor", 2);
             ChunkSizeInMB = GetConfigValue<int>("ChunkSizeInMB", 2);
 
             // SAS timeout

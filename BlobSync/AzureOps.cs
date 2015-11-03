@@ -42,7 +42,7 @@ namespace BlobSync
         // updates blob if possible.
         // if blob doesn't already exist OR does not have a signature file 
         // then we just upload as usual.
-        public long UploadFile(string containerName, string blobName, string localFilePath)
+        public long UploadFile(string containerName, string blobName, string localFilePath, int parallelFactor=2)
         {
             var fileLength = CommonOps.GetFileSize(localFilePath);
 
@@ -62,7 +62,7 @@ namespace BlobSync
 
                 var blobSig = DownloadSignatureForBlob(containerName, blobName);
                 var searchResults = CommonOps.SearchLocalFileForSignatures(localFilePath, blobSig);
-                var allBlocks = UploadDelta(localFilePath, searchResults, containerName, blobName);
+                var allBlocks = UploadDelta(localFilePath, searchResults, containerName, blobName, parallelFactor:parallelFactor);
                 var sig = CommonOps.CreateSignatureFromNewAndReusedBlocks(allBlocks);
 
                 UploadSignatureForBlob(blobName, containerName, sig);
@@ -82,9 +82,7 @@ namespace BlobSync
                     EndOffset = fileLength - 1
                 };
 
-                var allUploadedBlocks = UploadBytesParallel(remainingBytes, localFilePath, containerName, blobName);
-                // var allUploadedBlocks = UploadBytes(remainingBytes, localFilePath, containerName, blobName);
-               
+                var allUploadedBlocks = UploadBytesParallel(remainingBytes, localFilePath, containerName, blobName, parallelFactor: parallelFactor);  
                 var res = (from b in allUploadedBlocks orderby b.Offset ascending select b.BlockId);
                 PutBlockList(res.ToArray(), containerName, blobName);
                 
@@ -225,7 +223,7 @@ namespace BlobSync
         // Uploads differences between existing blob and updated local file.
         // Have local file to reference, the search results (indicating which parts need to be uploaded)
         // container and blob name.
-        private List<UploadedBlock> UploadDelta(string localFilePath, SignatureSearchResult searchResults, string containerName, string blobName, bool testMode = false)
+        private List<UploadedBlock> UploadDelta(string localFilePath, SignatureSearchResult searchResults, string containerName, string blobName, bool testMode = false, int parallelFactor=2)
         {
             var allUploadedBlocks = new List<UploadedBlock>();
 
@@ -234,8 +232,7 @@ namespace BlobSync
             // reuse the blocks already in use.
             foreach (var remainingBytes in searchResults.ByteRangesToUpload)
             {
-                var uploadedBlockList = UploadBytesParallel(remainingBytes, localFilePath, containerName, blobName, testMode);
-                //var uploadedBlockList = UploadBytes(remainingBytes, localFilePath, containerName, blobName, testMode);
+                var uploadedBlockList = UploadBytesParallel(remainingBytes, localFilePath, containerName, blobName, testMode, parallelFactor);
                 allUploadedBlocks.AddRange(uploadedBlockList);
             }
 

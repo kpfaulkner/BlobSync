@@ -28,7 +28,7 @@ namespace BlobSync
     // ie one implementation for Azure, one for S3 etc etc etc.
     internal interface ICloudOps
     {
-        long UploadFile(string container, string blobName, string localFilePath);
+        long UploadFile(string container, string blobName, string localFilePath, int parallelFactor);
 
     }
 }
