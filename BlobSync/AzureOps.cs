@@ -511,21 +511,21 @@ namespace BlobSync
         }
 
         // download blob to stream
-        public long DownloadBlob(string containerName, string blobName, Stream stream)
+        public long DownloadBlob(string containerName, string blobName, Stream stream, int parallelFactor = 2)
         {
             var client = AzureHelper.GetCloudBlobClient();
             var container = client.GetContainerReference(containerName);
             var url = AzureHelper.GenerateUrl(containerName, blobName);
             var blobRef = client.GetBlobReferenceFromServer(new Uri(url));
 
-            ReadBlockBlob(blobRef, stream);
+            ReadBlockBlob(blobRef, stream, parallelFactor);
 
             return stream.Length;
 
         }
 
 
-        public long DownloadBlob(string containerName, string blobName, string localFilePath)
+        public long DownloadBlob(string containerName, string blobName, string localFilePath, int parallelFactor = 2)
         {
             long bytesDownloaded = 0;
 
@@ -546,7 +546,7 @@ namespace BlobSync
                 var byteRangesToDownload = GenerateByteRangesOfBlobToDownload(searchResults.SignaturesToReuse,blobSig,
                     containerName, blobName);
 
-                RegenerateBlob(containerName, blobName, byteRangesToDownload, localFilePath, searchResults.SignaturesToReuse, blobSig);
+                RegenerateBlob(containerName, blobName, byteRangesToDownload, localFilePath, searchResults.SignaturesToReuse, blobSig, parallelFactor);
                 
                 foreach(var byteRange in byteRangesToDownload)
                 {
@@ -560,7 +560,7 @@ namespace BlobSync
                 // get stream to store.
                 using (var stream = CommonHelper.GetStream(localFilePath))
                 {
-                    bytesDownloaded = DownloadBlob(containerName, blobName, stream);
+                    bytesDownloaded = DownloadBlob(containerName, blobName, stream, parallelFactor);
                 }
             }
 
@@ -571,7 +571,7 @@ namespace BlobSync
         // we need to either download byte ranges from Azure.
         // OR
         // need to copy from local file.
-        private void RegenerateBlob(string containerName, string blobName, List<RemainingBytes> byteRangesToDownload, string localFilePath, List<BlockSignature> reusableBlockSignatures, SizeBasedCompleteSignature blobSig )
+        private void RegenerateBlob(string containerName, string blobName, List<RemainingBytes> byteRangesToDownload, string localFilePath, List<BlockSignature> reusableBlockSignatures, SizeBasedCompleteSignature blobSig, int parallelFactor = 2)
         {
             // removing size from the equation.
             var allBlobSigs =
@@ -628,7 +628,7 @@ namespace BlobSync
                         {
                             // download bytes.
                             var blobBytes = DownloadBytes(containerName, blobName, byteRange.BeginOffset,
-                                byteRange.EndOffset);
+                                byteRange.EndOffset, parallelFactor);
 
                             newStream.Seek(sig.Offset, SeekOrigin.Begin);
                             newStream.Write(blobBytes, 0, (int)(byteRange.EndOffset - byteRange.BeginOffset + 1));
@@ -643,14 +643,14 @@ namespace BlobSync
             File.Replace(localFilePath + ".new", localFilePath,null);
         }
 
-        private byte[] DownloadBytes(string containerName, string blobName, long beginOffset, long endOffset)
+        private byte[] DownloadBytes(string containerName, string blobName, long beginOffset, long endOffset, int parallelFactor=2)
         {
             var client = AzureHelper.GetCloudBlobClient();
             var container = client.GetContainerReference(containerName);
             var blobRef = container.GetBlockBlobReference(blobName);
 
             var buffer = new byte[ endOffset - beginOffset +1];
-            blobRef.DownloadRangeToByteArray(buffer, 0, beginOffset, endOffset - beginOffset + 1);
+            blobRef.DownloadRangeToByteArray(buffer, 0, beginOffset, endOffset - beginOffset + 1, options: new BlobRequestOptions { ParallelOperationThreadCount = parallelFactor });
 
             return buffer;
         }
@@ -693,12 +693,12 @@ namespace BlobSync
             return remainingBytesList;
         }
 
-        private void ReadBlockBlob(ICloudBlob blobRef, Stream stream)
+        private void ReadBlockBlob(ICloudBlob blobRef, Stream stream, int parallelFactor=2)
         {
             var blockBlob = blobRef as CloudBlockBlob;
 
             // no parallel yet.
-            blockBlob.DownloadToStream(stream);
+            blockBlob.DownloadToStream(stream, options: new BlobRequestOptions { ParallelOperationThreadCount = parallelFactor });
         }
 
         public void GetBlockListInfo(string containerName, string blobName)
