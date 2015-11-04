@@ -73,7 +73,7 @@ namespace BlobSyncCmd
                         Console.WriteLine("Uploaded {0} bytes", bytesUploaded);
                         break;
                     case "download":
-                        var bytesDownloaded = azureOps.DownloadBlob(containerName, blobName, fileName);
+                        var bytesDownloaded = azureOps.DownloadBlob(containerName, blobName, fileName, parallelFactor);
                         Console.WriteLine("Downloaded {0} bytes", bytesDownloaded);
                         break;
                     case "estimate":
