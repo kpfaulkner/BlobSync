@@ -150,6 +150,18 @@ namespace BlobSync.Helpers
             return exists;
         }
 
+        // sets MD5 for entire blob.
+        public static void SetBlobMD5(string containerName, string blobName, string md5)
+        {
+            var client = AzureHelper.GetCloudBlobClient();
+            var container = client.GetContainerReference(containerName);
+            var blob = container.GetBlockBlobReference(blobName);
+
+            blob.FetchAttributes();
+            blob.Properties.ContentMD5 = md5;
+            blob.SetProperties();
+        }
+
         // sets signature name as metadata in blob
         // returns the signature name that will be uploaded.
         public static string SetSignatureName(string containerName, string blobName)

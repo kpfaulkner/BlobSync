@@ -6,6 +6,10 @@ Rename the Dummy_App.config and add entries:
     <add key="AzureAccountKey" value="Azure Account Key, please see the Azure Portal" />
     <add key="AzureAccountName" value="Azure Account Name" />
 	<add key="SignatureSize" value="10000" />
+
+	<add key="IsDev" value="1"/>    1 for Azure storage emulator, 0 for real Azure.
+    <add key="ParallelFactor" value="4"/>
+
 </appSettings>
 
 The assembly will then be ready to use. 

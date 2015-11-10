@@ -30,6 +30,7 @@ using System.Text;
 using System.Threading.Tasks;
 using Microsoft.WindowsAzure.Storage;
 using System.Collections.Concurrent;
+using System.Diagnostics;
 
 namespace BlobSync
 {
@@ -45,31 +46,46 @@ namespace BlobSync
         public long UploadFile(string containerName, string blobName, string localFilePath, int parallelFactor=2)
         {
             var fileLength = CommonOps.GetFileSize(localFilePath);
+            var sw = new Stopwatch();
+            sw.Start();
 
-            // not used here but is cached for later.
-            // WORK IN PROGRESS DONT ERASE THIS LINE.
-            //ConfigHelper.GetSignatureSize(fileLength, true);
-            
             // 1) Does remote blob exist?
             // 2) if so, download existing signature for blob.
             if (AzureHelper.DoesBlobExist(containerName, blobName) && AzureHelper.DoesBlobSignatureExist(containerName, blobName))
             {
-                // 3) If blob exists and have signature, then let the magic begin.
-                // 3.1) Download existing blob signature from Azure.
-                // 3.2) Search through local file for matches in existing blob signature.
-                // 3.3) Upload differences to Azure
-                // 3.4) Upload new signature.s
+                var md5ForBlob = GetBlobMD5(containerName, blobName);
+                var md5ForFile = GetFileMD5(localFilePath);
 
-                var blobSig = DownloadSignatureForBlob(containerName, blobName);
-                var searchResults = CommonOps.SearchLocalFileForSignatures(localFilePath, blobSig);
-                var allBlocks = UploadDelta(localFilePath, searchResults, containerName, blobName, parallelFactor:parallelFactor);
-                var sig = CommonOps.CreateSignatureFromNewAndReusedBlocks(allBlocks);
+                // only continue if files are actually different.
+                if (md5ForBlob != md5ForFile)
+                {
+                    // 3) If blob exists and have signature, then let the magic begin.
+                    // 3.1) Download existing blob signature from Azure.
+                    // 3.2) Search through local file for matches in existing blob signature.
+                    // 3.3) Upload differences to Azure
+                    // 3.4) Upload new signature.s
 
-                UploadSignatureForBlob(blobName, containerName, sig);
+                    var blobSig = DownloadSignatureForBlob(containerName, blobName);
+                    Console.WriteLine(string.Format("Dowloaded sig {0}ms", sw.ElapsedMilliseconds));
 
-                long bytesUploaded = allBlocks.Where(b => b.IsNew).Select(b => b.Size).Sum();
+                    var searchResults = CommonOps.SearchLocalFileForSignatures(localFilePath, blobSig);
 
-                return bytesUploaded;
+                    Console.WriteLine(string.Format("Searched for common {0}ms", sw.ElapsedMilliseconds));
+
+                    var allBlocks = UploadDelta(localFilePath, searchResults, containerName, blobName, parallelFactor: parallelFactor);
+                    var sig = CommonOps.CreateSignatureFromNewAndReusedBlocks(allBlocks);
+
+                    UploadSignatureForBlob(blobName, containerName, sig);
+
+                    // set md5 for entire blob
+                    AzureHelper.SetBlobMD5(containerName, blobName, md5ForFile);
+
+                    long bytesUploaded = allBlocks.Where(b => b.IsNew).Select(b => b.Size).Sum();
+
+                    return bytesUploaded;
+                }
+
+                return 0;   // no bytes changed, no bytes uploaded
             }
             else
             {
@@ -91,6 +107,18 @@ namespace BlobSync
 
                 return fileLength;
             }
+        }
+
+        private string GetFileMD5(string localFilePath)
+        {
+            var md5Hash = MD5.Create();
+            byte[] hashByteArray;
+            using(var fs = new FileStream( localFilePath, FileMode.Open))
+            {
+                hashByteArray = md5Hash.ComputeHash(fs);
+            }
+
+            return Convert.ToBase64String(hashByteArray);
         }
 
         /// <summary>
@@ -214,7 +242,6 @@ namespace BlobSync
             var client = AzureHelper.GetCloudBlobClient();
             var container = client.GetContainerReference(containerName);
             var blob = container.GetBlockBlobReference(blobName);
-
             var blobIdList = blob.DownloadBlockList(BlockListingFilter.Committed);
             var overlap = (from b in blobIdList where blockIdArray.Contains(b.Name) select b).ToList();
             blob.PutBlockList(blockIdArray);
@@ -476,6 +503,15 @@ namespace BlobSync
             return t;
         }
 
+        private string GetBlobMD5(string containerName, string blobName)
+        {
+            var client = AzureHelper.GetCloudBlobClient();
+            var container = client.GetContainerReference(containerName);
+            var url = AzureHelper.GenerateUrl(containerName, blobName);
+            var blobRef = client.GetBlobReferenceFromServer(new Uri(url));
+            blobRef.FetchAttributes();
+            return blobRef.Properties.ContentMD5;
+        }
 
         public SizeBasedCompleteSignature DownloadSignatureForBlob(string container, string blobName)
         {
