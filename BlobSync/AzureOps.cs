@@ -48,14 +48,14 @@ namespace BlobSync
             var fileLength = CommonOps.GetFileSize(localFilePath);
             var sw = new Stopwatch();
             sw.Start();
+            var md5ForFile = GetFileMD5(localFilePath);
 
             // 1) Does remote blob exist?
             // 2) if so, download existing signature for blob.
             if (AzureHelper.DoesBlobExist(containerName, blobName) && AzureHelper.DoesBlobSignatureExist(containerName, blobName))
             {
                 var md5ForBlob = GetBlobMD5(containerName, blobName);
-                var md5ForFile = GetFileMD5(localFilePath);
-
+                
                 // only continue if files are actually different.
                 if (md5ForBlob != md5ForFile)
                 {
@@ -104,6 +104,9 @@ namespace BlobSync
                 
                 var sig = CommonOps.CreateSignatureForLocalFile(localFilePath);
                 UploadSignatureForBlob(blobName, containerName, sig);
+
+                // set md5 for entire blob
+                AzureHelper.SetBlobMD5(containerName, blobName, md5ForFile);
 
                 return fileLength;
             }
