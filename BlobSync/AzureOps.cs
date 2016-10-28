@@ -245,8 +245,7 @@ namespace BlobSync
             var client = AzureHelper.GetCloudBlobClient();
             var container = client.GetContainerReference(containerName);
             var blob = container.GetBlockBlobReference(blobName);
-            var blobIdList = blob.DownloadBlockList(BlockListingFilter.Committed);
-            var overlap = (from b in blobIdList where blockIdArray.Contains(b.Name) select b).ToList();
+            
             blob.PutBlockList(blockIdArray);
         }
 
